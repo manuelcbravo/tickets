@@ -50,7 +50,11 @@ class ProyectoSectionController extends Controller
             'createdBy:id,name',
             'updatedBy:id,name',
             'ticket:id,folio,titulo',
+            'parent:id,titulo,estado',
+            'children:id,parent_id,titulo,estado,prioridad,kanban_column',
             'tiempos.usuario:id,name',
+            'ticketLinks.ticket:id,folio,titulo',
+            'files',
         ]);
 
         return Inertia::render('activities/show', [

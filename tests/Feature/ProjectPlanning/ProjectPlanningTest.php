@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
@@ -202,6 +203,46 @@ class ProjectPlanningTest extends TestCase
             ->assertRedirect();
 
         $this->assertDatabaseCount('proyecto_actividad_tickets', 1);
+    }
+
+    public function test_activity_actions_have_independent_pages(): void
+    {
+        $user = $this->userWithPermission('project-planning.activities.manage');
+        $user->givePermissionTo($this->permission('project-planning.activities.time'));
+        $user->givePermissionTo($this->permission('project-planning.kanban.manage'));
+        $user->givePermissionTo($this->permission('tickets.create'));
+
+        $project = $this->project();
+        $ticket = $this->ticket($project);
+        $activity = ProyectoActividad::query()->create([
+            'proyecto_id' => $project->id,
+            'ticket_id' => $ticket->id,
+            'titulo' => 'Actividad con acciones',
+            'tipo' => 'tarea',
+            'estado' => 'pendiente',
+            'prioridad' => 'media',
+            'kanban_column' => 'backlog',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('proyectos.activities.times.create', [$project, $activity]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('activities/times/create'));
+
+        $this->actingAs($user)
+            ->get(route('proyectos.activities.kanban.edit', [$project, $activity]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('activities/kanban/edit'));
+
+        $this->actingAs($user)
+            ->get(route('proyectos.activities.tickets.create', [$project, $activity]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('activities/tickets/create'));
+
+        $this->actingAs($user)
+            ->get(route('proyectos.activities.create-ticket.create', [$project, $activity]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('activities/tickets/from-activity'));
     }
 
     public function test_create_ticket_from_activity_requires_ticket_permission(): void

@@ -444,7 +444,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('activities/{activity}/kanban', [ProjectKanbanController::class, 'updateColumn'])
             ->middleware('permission:project-planning.kanban.manage')
             ->name('activities.kanban');
+        Route::get('activities/{activity}/kanban/edit', [ProjectKanbanController::class, 'edit'])
+            ->middleware('permission:project-planning.kanban.manage')
+            ->name('activities.kanban.edit');
 
+        Route::get('activities/{activity}/times/create', [ProjectActivityTimeController::class, 'create'])
+            ->middleware('permission:project-planning.activities.time')
+            ->name('activities.times.create');
         Route::post('activities/{activity}/times', [ProjectActivityTimeController::class, 'store'])
             ->middleware('permission:project-planning.activities.time')
             ->name('activities.times.store');
@@ -455,12 +461,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->middleware('permission:project-planning.activities.time')
             ->name('activities.times.destroy');
 
+        Route::get('activities/{activity}/tickets/create', [ProjectActivityTicketController::class, 'create'])
+            ->middleware('permission:project-planning.activities.manage')
+            ->name('activities.tickets.create');
         Route::post('activities/{activity}/tickets', [ProjectActivityTicketController::class, 'store'])
             ->middleware('permission:project-planning.activities.manage')
             ->name('activities.tickets.store');
         Route::delete('activities/{activity}/tickets/{ticket}', [ProjectActivityTicketController::class, 'destroy'])
             ->middleware('permission:project-planning.activities.manage')
             ->name('activities.tickets.destroy');
+        Route::get('activities/{activity}/create-ticket/create', [ProjectActivityController::class, 'createTicketForm'])
+            ->middleware('permission:tickets.create')
+            ->name('activities.create-ticket.create');
         Route::post('activities/{activity}/create-ticket', [ProjectActivityController::class, 'createTicket'])
             ->middleware('permission:tickets.create')
             ->name('activities.create-ticket');

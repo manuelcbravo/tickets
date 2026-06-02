@@ -323,9 +323,16 @@ export default function ActivitiesIndex({
     const visibleKanbanColumns = kanbanColumns.filter(
         (column) => column !== 'terminado',
     );
-    const activityHref = (activity: Activity) => projects.length === 1
-        ? route('proyectos.activities.show', [activity.proyecto.id, activity.id])
-        : route('activities.show', activity.id);
+    const activityHref = (activity: Activity) =>
+        projects.length === 1
+            ? route('proyectos.activities.show', [
+                  activity.proyecto.id,
+                  activity.id,
+              ])
+            : route('activities.show', activity.id);
+
+    const projectActivityRoute = (name: string, activity: Activity) =>
+        route(name, [activity.proyecto.id, activity.id]);
 
     const openCreate = () => {
         setActiveActivity(null);
@@ -490,7 +497,7 @@ export default function ActivitiesIndex({
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild>
                             <Link href={activityHref(activity)}>
-                                <Eye className="mr-2 size-4" /> Ver detalle
+                                <Eye className="mr-2 size-4" /> Ver resumen
                             </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
@@ -512,25 +519,36 @@ export default function ActivitiesIndex({
                                     <Pencil className="mr-2 size-4" /> Editar
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                    <Link href={activityHref(activity)}>
-                                        <Clock className="mr-2 size-4" /> Registrar tiempo
-                                    </Link>
-                                </DropdownMenuItem>
-                                {canMoveKanban && (
-                                    <DropdownMenuItem asChild>
-                                        <Link href={activityHref(activity)}>
-                                            <KanbanSquare className="mr-2 size-4" /> Mover estado
-                                        </Link>
-                                    </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem asChild>
-                                    <Link href={activityHref(activity)}>
-                                        <Ticket className="mr-2 size-4" /> Relacionar ticket
+                                    <Link
+                                        href={projectActivityRoute(
+                                            'proyectos.activities.times.create',
+                                            activity,
+                                        )}
+                                    >
+                                        <Clock className="mr-2 size-4" />{' '}
+                                        Registrar tiempo
                                     </Link>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                    <Link href={activityHref(activity)}>
-                                        <Plus className="mr-2 size-4" /> Crear ticket
+                                    <Link
+                                        href={projectActivityRoute(
+                                            'proyectos.activities.tickets.create',
+                                            activity,
+                                        )}
+                                    >
+                                        <Ticket className="mr-2 size-4" />{' '}
+                                        Relacionar ticket
+                                    </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                    <Link
+                                        href={projectActivityRoute(
+                                            'proyectos.activities.create-ticket.create',
+                                            activity,
+                                        )}
+                                    >
+                                        <Plus className="mr-2 size-4" /> Crear
+                                        ticket
                                     </Link>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
@@ -882,7 +900,11 @@ export default function ActivitiesIndex({
                                                     className="w-52"
                                                 >
                                                     <ContextMenuItem asChild>
-                                                        <Link href={activityHref(activity)}>
+                                                        <Link
+                                                            href={activityHref(
+                                                                activity,
+                                                            )}
+                                                        >
                                                             <Eye className="size-4" />{' '}
                                                             Gestionar
                                                         </Link>
@@ -1247,11 +1269,18 @@ export default function ActivitiesIndex({
                         onSuccess: () => {
                             setFilesActivity((current) =>
                                 current
-                                    ? { ...current, files: current.files?.filter((f) => f.id !== fileId) ?? [] }
+                                    ? {
+                                          ...current,
+                                          files:
+                                              current.files?.filter(
+                                                  (f) => f.id !== fileId,
+                                              ) ?? [],
+                                      }
                                     : null,
                             );
                         },
-                        onError: () => toast.error('No se pudo eliminar el archivo.'),
+                        onError: () =>
+                            toast.error('No se pudo eliminar el archivo.'),
                     });
                 }}
             />

@@ -8,6 +8,8 @@ use App\Http\Requests\ProjectPlanning\MoveProjectActivityKanbanRequest;
 use App\Http\Requests\ProjectPlanning\StoreGlobalProjectActivityRequest;
 use App\Http\Requests\ProjectPlanning\StoreProjectActivityRequest;
 use App\Http\Requests\ProjectPlanning\UpdateProjectActivityRequest;
+use App\Models\CatTicketPrioridad;
+use App\Models\CatTicketTipo;
 use App\Models\Proyecto;
 use App\Models\ProyectoActividad;
 use App\Models\User;
@@ -51,7 +53,11 @@ class ProjectActivityController extends Controller
             'createdBy:id,name',
             'updatedBy:id,name',
             'ticket:id,folio,titulo',
+            'parent:id,titulo,estado',
+            'children:id,parent_id,titulo,estado,prioridad,kanban_column',
             'tiempos.usuario:id,name',
+            'ticketLinks.ticket:id,folio,titulo',
+            'files',
         ]);
 
         return Inertia::render('activities/show', [
@@ -193,6 +199,24 @@ class ProjectActivityController extends Controller
         $service->cancel($proyecto, $activity, auth()->id());
 
         return back()->with('success', 'Actividad cancelada.');
+    }
+
+    public function createTicketForm(Proyecto $proyecto, ProyectoActividad $activity, ProjectActivityService $service): Response
+    {
+        $service->assertBelongsToProject($proyecto, $activity);
+
+        $activity->load([
+            'proyecto:id,nombre,client_id',
+            'proyecto.cliente:id,nombre,razon_social',
+            'responsable:id,name',
+        ]);
+
+        return Inertia::render('activities/tickets/from-activity', [
+            'proyecto' => $proyecto->only(['id', 'nombre']),
+            'activity' => $activity,
+            'ticketTypes' => CatTicketTipo::query()->where('activo', true)->orderBy('orden')->get(['id', 'nombre']),
+            'ticketPriorities' => CatTicketPrioridad::query()->where('activo', true)->orderBy('orden')->get(['id', 'nombre']),
+        ]);
     }
 
     public function createTicket(CreateTicketFromActivityRequest $request, Proyecto $proyecto, ProyectoActividad $activity, ProjectActivityTicketService $service): RedirectResponse

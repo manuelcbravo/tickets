@@ -11,9 +11,27 @@ use App\Models\ProyectoActividadTiempo;
 use App\Services\ProjectPlanning\ProjectActivityService;
 use App\Services\ProjectPlanning\ProjectActivityTimeService;
 use Illuminate\Http\RedirectResponse;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class ProjectActivityTimeController extends Controller
 {
+    public function create(Proyecto $proyecto, ProyectoActividad $activity, ProjectActivityService $activityService): Response
+    {
+        $activityService->assertBelongsToProject($proyecto, $activity);
+
+        $activity->load([
+            'proyecto:id,nombre,client_id',
+            'proyecto.cliente:id,nombre,razon_social',
+            'responsable:id,name',
+        ]);
+
+        return Inertia::render('activities/times/create', [
+            'proyecto' => $proyecto->only(['id', 'nombre']),
+            'activity' => $activity,
+        ]);
+    }
+
     public function store(StoreProjectActivityTimeRequest $request, Proyecto $proyecto, ProyectoActividad $activity, ProjectActivityService $activityService, ProjectActivityTimeService $service): RedirectResponse
     {
         $activityService->assertBelongsToProject($proyecto, $activity);
