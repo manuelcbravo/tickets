@@ -3,6 +3,8 @@
 namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
+use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -35,12 +37,39 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+        $recentNotifications = [];
+        $unreadNotificationsCount = 0;
+
+        if ($user && Schema::hasTable('notifications')) {
+            $unreadNotificationsCount = $user->unreadNotifications()->count();
+            $recentNotifications = $user->notifications()
+                ->latest()
+                ->limit(5)
+                ->get()
+                ->map(fn (DatabaseNotification $notification): array => [
+                    'id' => $notification->id,
+                    'title' => data_get($notification->data, 'title', 'Notificacion'),
+                    'message' => data_get($notification->data, 'message', ''),
+                    'level' => data_get($notification->data, 'level', 'info'),
+                    'module' => data_get($notification->data, 'module', 'system'),
+                    'action_url' => data_get($notification->data, 'action_url'),
+                    'read_at' => $notification->read_at?->toISOString(),
+                    'created_at' => $notification->created_at?->toISOString(),
+                ])
+                ->values();
+        }
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user(),
-                'permissions' => $request->user()?->getAllPermissions()->pluck('name'),
+                'user' => $user ? [
+                    ...$user->toArray(),
+                    'unread_notifications_count' => $unreadNotificationsCount,
+                    'recent_notifications' => $recentNotifications,
+                ] : null,
+                'permissions' => $user?->getAllPermissions()->pluck('name'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'flash' => [

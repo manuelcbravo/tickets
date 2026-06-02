@@ -13,7 +13,7 @@ class StoreFileRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'file' => ['required', 'file', 'max:10240'],
+            'file' => ['required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,webp,pdf,doc,docx,xls,xlsx,txt,csv,zip'],
             'related_table' => ['required', 'string', 'max:80'],
             'related_uuid' => ['required', 'uuid'],
         ];

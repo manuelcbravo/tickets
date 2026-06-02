@@ -30,6 +30,13 @@ class DatabaseSeeder extends Seeder
         $this->call(CatMunicipiosTableSeeder::class);
         $this->call(CatSatServiciosTableSeeder::class);
         $this->call(CatSatClaveUnidadesTableSeeder::class);
+        $this->call(CatTicketTiposTableSeeder::class);
+        $this->call(CatTicketEstadosTableSeeder::class);
+        $this->call(CatTicketPrioridadesTableSeeder::class);
+        $this->call(CatTicketImpactosTableSeeder::class);
+        $this->call(CatTicketUrgenciasTableSeeder::class);
+        $this->call(CatTicketRiesgosTableSeeder::class);
+        $this->call(SlaPoliticaDefaultSeeder::class);
 
     }
 }

@@ -17,6 +17,8 @@ class File extends Model
         'original_name',
         'mime_type',
         'size',
+        'table_id',
+        'related_id',
         'related_table',
         'related_uuid',
     ];

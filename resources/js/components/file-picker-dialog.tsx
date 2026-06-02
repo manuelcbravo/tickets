@@ -14,7 +14,7 @@ import {
     Trash2,
     UploadCloud,
 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { route } from 'ziggy-js';
 import {
@@ -59,6 +59,8 @@ type FilePickerDialogProps = {
     uploading?: boolean;
 };
 
+const EMPTY_STORED_FILES: StoredFile[] = [];
+
 const isImageMime = (mimeType: string | null) => mimeType?.startsWith('image/') ?? false;
 
 const resolveFileIcon = (mimeType: string | null) => {
@@ -79,7 +81,7 @@ export function FilePickerDialog({
     onOpenChange,
     title = 'Subir archivo',
     description = 'Arrastra y suelta archivos para subirlos de inmediato.',
-    storedFiles = [],
+    storedFiles = EMPTY_STORED_FILES,
     tableId,
     relatedUuid = null,
     onUpload,
@@ -91,16 +93,40 @@ export function FilePickerDialog({
 }: FilePickerDialogProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [localStoredFiles, setLocalStoredFiles] = useState<StoredFile[]>(storedFiles);
     const [isUploadingLocal, setIsUploadingLocal] = useState(false);
     const [progress, setProgress] = useState(0);
     const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
+
+    useEffect(() => {
+        setLocalStoredFiles(storedFiles);
+    }, [storedFiles]);
+
+    const refreshStoredFiles = async () => {
+        if (!tableId || !relatedUuid) return;
+
+        try {
+            const response = await fetch(
+                `${route('files.index')}?related_table=${encodeURIComponent(tableId)}&related_uuid=${encodeURIComponent(relatedUuid)}`,
+                { headers: { Accept: 'application/json' } },
+            );
+
+            if (!response.ok) return;
+
+            const payload = (await response.json()) as { files?: StoredFile[] };
+            setLocalStoredFiles(Array.isArray(payload.files) ? payload.files : []);
+        } catch {
+            // Si falla el fetch, la lista se actualizara en el siguiente reload de Inertia
+        }
+    };
 
     const uploadWithContext = async (files: File[]) => {
         if (!tableId || !relatedUuid) return;
 
         setIsUploadingLocal(true);
         setProgress(0);
+        let successCount = 0;
 
         for (const [index, file] of files.entries()) {
             const uploadForm = new FormData();
@@ -108,18 +134,26 @@ export function FilePickerDialog({
             uploadForm.append('related_table', tableId);
             uploadForm.append('related_uuid', relatedUuid);
 
-            await new Promise<void>((resolve, reject) => {
+            const uploaded = await new Promise<boolean>((resolve) => {
                 router.post(route('files.store'), uploadForm, {
                     forceFormData: true,
                     preserveScroll: true,
-                    onSuccess: () => resolve(),
-                    onError: () => reject(new Error('upload_failed')),
+                    onSuccess: () => resolve(true),
+                    onError: () => resolve(false),
                 });
-            }).catch(() => {
-                toast.error(`No se pudo subir: ${file.name}`);
             });
 
+            if (uploaded) {
+                successCount += 1;
+            } else {
+                toast.error(`No se pudo subir: ${file.name}`);
+            }
+
             setProgress(Math.round(((index + 1) / files.length) * 100));
+        }
+
+        if (successCount > 0) {
+            await refreshStoredFiles();
         }
 
         setIsUploadingLocal(false);
@@ -161,6 +195,7 @@ export function FilePickerDialog({
             onSuccess: () => {
                 setRenamingFileId(null);
                 setRenameValue('');
+                void refreshStoredFiles();
             },
             onError: () => toast.error('No se pudo renombrar el archivo.'),
         });
@@ -236,11 +271,11 @@ export function FilePickerDialog({
                             Clic derecho para descargar, renombrar o eliminar.
                         </p>
                         <div className="max-h-[430px] overflow-y-auto rounded-lg border p-2">
-                            {storedFiles.length === 0 ? (
+                            {localStoredFiles.length === 0 ? (
                                 <p className="p-4 text-sm text-muted-foreground">Aún no hay archivos subidos.</p>
                             ) : (
                                 <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                                    {storedFiles.map((file) => {
+                                    {localStoredFiles.map((file) => {
                                         const Icon = resolveFileIcon(file.mime_type);
 
                                         return (

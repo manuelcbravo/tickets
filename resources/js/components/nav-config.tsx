@@ -14,15 +14,22 @@ import { useCurrentUrl } from '@/hooks/use-current-url';
 import type { NavItem } from '@/types';
 
 export function NavConfig({ items = [] }: { items: NavItem[] }) {
-    const { isCurrentUrl } = useCurrentUrl();
+    const { currentUrl, isCurrentUrl } = useCurrentUrl();
+    const isNavItemActive = (item: NavItem) => {
+        if (isCurrentUrl(item.href)) {
+            return true;
+        }
+
+        return item.activePatterns?.some((pattern) => new RegExp(pattern).test(currentUrl)) ?? false;
+    };
 
     return (
         <SidebarGroup className="px-2 py-0">
             <SidebarMenu>
                 {items.map((item) => {
                     const hasChildren = Boolean(item.children?.length);
-                    const hasActiveChild = item.children?.some((child) => isCurrentUrl(child.href));
-                    const isActive = isCurrentUrl(item.href) || hasActiveChild;
+                    const hasActiveChild = item.children?.some(isNavItemActive);
+                    const isActive = isNavItemActive(item) || hasActiveChild;
 
                     if (!hasChildren) {
                         return (
@@ -52,7 +59,7 @@ export function NavConfig({ items = [] }: { items: NavItem[] }) {
                                     <SidebarMenuSub>
                                         {item.children?.map((child) => (
                                             <SidebarMenuSubItem key={child.title}>
-                                                <SidebarMenuSubButton asChild isActive={isCurrentUrl(child.href)}>
+                                                <SidebarMenuSubButton asChild isActive={isNavItemActive(child)}>
                                                     <Link href={child.href} prefetch>
                                                         <span>{child.title}</span>
                                                     </Link>

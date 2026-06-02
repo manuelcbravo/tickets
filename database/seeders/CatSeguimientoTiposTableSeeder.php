@@ -16,7 +16,6 @@ class CatSeguimientoTiposTableSeeder extends Seeder
 
         $tipos = [
             ['nombre' => 'Llamada', 'descripcion' => 'Seguimiento por llamada telefonica.'],
-            ['nombre' => 'WhatsApp', 'descripcion' => 'Seguimiento por mensaje de WhatsApp.'],
             ['nombre' => 'Email', 'descripcion' => 'Seguimiento por correo electronico.'],
             ['nombre' => 'Visita', 'descripcion' => 'Seguimiento presencial.'],
             ['nombre' => 'Nota interna', 'descripcion' => 'Nota de uso interno para el equipo.'],

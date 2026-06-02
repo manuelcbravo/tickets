@@ -19,6 +19,8 @@ class FileController extends Controller
             'related_uuid' => ['required', 'uuid'],
         ]);
 
+        $this->authorizeContext($request, $validated['related_table'], 'view');
+
         return response()->json([
             'files' => File::query()
                 ->where('related_table', $validated['related_table'])
@@ -30,6 +32,8 @@ class FileController extends Controller
 
     public function store(StoreFileRequest $request): RedirectResponse
     {
+        $this->authorizeContext($request, $request->string('related_table')->toString(), 'manage');
+
         $uploadedFile = $request->file('file');
         $disk = MediaDisk::name();
         $path = $uploadedFile->store($request->string('related_table')->toString(). '/' . $request->string('related_uuid')->toString(), $disk);
@@ -40,8 +44,9 @@ class FileController extends Controller
             'original_name' => $uploadedFile->getClientOriginalName(),
             'mime_type' => $uploadedFile->getClientMimeType(),
             'size' => $uploadedFile->getSize(),
+            'table_id' => $request->string('related_table')->toString(),
+            'related_id' => 0,
             'related_table' => $request->string('related_table')->toString(),
-            'related_id' => null,
             'related_uuid' => $request->string('related_uuid')->toString(),
         ]);
 
@@ -51,6 +56,8 @@ class FileController extends Controller
     public function rename(RenameFileRequest $request, File $file): RedirectResponse
     {
         $validated = $request->validated();
+
+        $this->authorizeContext($request, $validated['related_table'], 'manage');
 
         abort_unless(
             $file->related_table === $validated['related_table'] && $file->related_uuid === $validated['related_uuid'],
@@ -72,6 +79,8 @@ class FileController extends Controller
             'related_uuid' => ['required', 'uuid'],
         ]);
 
+        $this->authorizeContext($request, $validated['related_table'], 'manage');
+
         abort_unless(
             $file->related_table === $validated['related_table'] && $file->related_uuid === $validated['related_uuid'],
             403,
@@ -82,5 +91,28 @@ class FileController extends Controller
         $file->delete();
 
         return back()->with('success', 'Archivo eliminado correctamente.');
+    }
+
+    private function authorizeContext(Request $request, string $relatedTable, string $action): void
+    {
+        $permissions = match ($relatedTable) {
+            'projects' => $action === 'view'
+                ? ['project-planning.documents.view', 'project-planning.documents.manage']
+                : ['project-planning.documents.manage'],
+            'proyecto_actividades' => $action === 'view'
+                ? ['project-planning.activities.view', 'project-planning.activities.manage']
+                : ['project-planning.activities.manage'],
+            default => [],
+        };
+
+        if ($permissions === []) {
+            return;
+        }
+
+        abort_unless(
+            collect($permissions)->contains(fn (string $permission) => $request->user()?->can($permission)),
+            403,
+            'No autorizado para gestionar archivos en este contexto.',
+        );
     }
 }

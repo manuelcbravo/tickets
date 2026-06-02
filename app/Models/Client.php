@@ -17,10 +17,14 @@ class Client extends Model implements Auditable
 
     public const PUBLICO_GENERAL_UUID = '11111111-1111-4111-8111-111111111111';
     public const PUBLICO_GENERAL_RFC = 'XAXX010101000';
+    public const ESTATUS = ['activo', 'pausado', 'suspendido', 'moroso', 'inactivo'];
+    public const CLASIFICACIONES = ['normal', 'estrategico', 'alto_riesgo', 'bajo_soporte', 'legacy'];
 
     // ===== MASS ASSIGNMENT =====
     protected $fillable = [
         'company_id',
+        'nombre',
+        'razon_social',
 
         // datos personales
         'first_name',
@@ -45,6 +49,7 @@ class Client extends Model implements Auditable
         'email',
         'email_verified_at',
         'phone',
+        'sitio_web',
 
         // dirección
         'street',
@@ -71,6 +76,9 @@ class Client extends Model implements Auditable
         // estado
         'is_active',
         'is_blacklisted',
+        'estatus',
+        'clasificacion',
+        'notas_internas',
 
         // json
         'documents',
@@ -98,12 +106,26 @@ class Client extends Model implements Auditable
         'avatar_url',
     ];
 
+    protected static function booted(): void
+    {
+        static::creating(function (Client $client): void {
+            $fallbackName = $client->nombre ?: $client->razon_social ?: 'Cliente';
+
+            $client->first_name = $client->first_name ?: $fallbackName;
+            $client->last_name = $client->last_name ?: '-';
+        });
+    }
+
     // =====================================================
     // ACCESSORS
     // =====================================================
 
     public function getFullNameAttribute()
     {
+        if ($this->nombre) {
+            return $this->nombre;
+        }
+
         return trim(implode(' ', array_filter([
             $this->first_name,
             $this->middle_name,
@@ -128,7 +150,8 @@ class Client extends Model implements Auditable
 
     public function scopeActive($query)
     {
-        return $query->where('is_active', true);
+        return $query->where('is_active', true)
+            ->where('estatus', 'activo');
     }
 
     public function scopeNotBlacklisted($query)
@@ -205,5 +228,45 @@ class Client extends Model implements Auditable
     public function municipio(): BelongsTo
     {
         return $this->belongsTo(CatMunicipio::class, 'country_id', 'id');
+    }
+
+    public function contactos(): HasMany
+    {
+        return $this->hasMany(ClienteContacto::class, 'client_id');
+    }
+
+    public function proyectos(): HasMany
+    {
+        return $this->hasMany(Proyecto::class, 'client_id');
+    }
+
+    public function cotizaciones(): HasMany
+    {
+        return $this->hasMany(Cotizacion::class, 'cliente_id');
+    }
+
+    public function proyectoPlanesCobro(): HasMany
+    {
+        return $this->hasMany(ProyectoPlanCobro::class, 'cliente_id');
+    }
+
+    public function proyectoCargos(): HasMany
+    {
+        return $this->hasMany(ProyectoCargo::class, 'cliente_id');
+    }
+
+    public function proyectoPagos(): HasMany
+    {
+        return $this->hasMany(ProyectoPago::class, 'cliente_id');
+    }
+
+    public function notificationLogs(): HasMany
+    {
+        return $this->hasMany(NotificationLog::class, 'cliente_id');
+    }
+
+    public function externalMessages(): HasMany
+    {
+        return $this->hasMany(ExternalMessage::class, 'cliente_id');
     }
 }

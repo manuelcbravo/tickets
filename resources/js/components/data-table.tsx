@@ -27,6 +27,7 @@ type DataTableProps<TData> = {
     emptyMessage?: string;
     searchPlaceholder?: string;
     searchColumn?: string;
+    showSearch?: boolean;
     pageSize?: number;
 };
 
@@ -36,6 +37,7 @@ export function DataTable<TData>({
     emptyMessage = 'No hay resultados.',
     searchPlaceholder = 'Buscar...',
     searchColumn,
+    showSearch = true,
     pageSize = 10,
 }: DataTableProps<TData>) {
     const [search, setSearch] = useState('');
@@ -73,15 +75,19 @@ export function DataTable<TData>({
     return (
         <div className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <Input
-                    value={search}
-                    onChange={(event) => {
-                        setSearch(event.target.value);
-                        setPage(1);
-                    }}
-                    placeholder={searchPlaceholder}
-                    className="w-full sm:max-w-sm"
-                />
+                {showSearch ? (
+                    <Input
+                        value={search}
+                        onChange={(event) => {
+                            setSearch(event.target.value);
+                            setPage(1);
+                        }}
+                        placeholder={searchPlaceholder}
+                        className="w-full sm:max-w-sm"
+                    />
+                ) : (
+                    <div />
+                )}
                 <p className="text-xs text-muted-foreground">
                     {filteredData.length} resultados
                 </p>

@@ -207,7 +207,7 @@ export function GlobalSearchDrawer() {
                                         {results.clients.map((client) => (
                                             <Link
                                                 key={client.id}
-                                                href={route('clients.show', client.id)}
+                                                href={route('clientes.show', client.id)}
                                                 onClick={() => setOpen(false)}
                                                 className="block rounded-md border p-3 transition hover:bg-muted/40"
                                             >

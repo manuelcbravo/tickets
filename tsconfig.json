@@ -113,5 +113,12 @@
         },
         "jsx": "react-jsx"
     },
-    "include": ["resources/js/**/*.ts", "resources/js/**/*.d.ts", "resources/js/**/*.tsx"]
+    "include": ["resources/js/**/*.ts", "resources/js/**/*.d.ts", "resources/js/**/*.tsx"],
+    "exclude": [
+        "resources/js/actions/App/Http/Controllers/Clientes",
+        "resources/js/actions/App/Http/Controllers/Knowledge",
+        "resources/js/actions/App/Http/Controllers/Proyectos",
+        "resources/js/actions/App/Http/Controllers/Tickets",
+        "resources/js/actions/Laravel/Fortify"
+    ]
 }

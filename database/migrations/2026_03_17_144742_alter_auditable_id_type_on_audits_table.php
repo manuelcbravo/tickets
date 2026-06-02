@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement('DROP INDEX IF EXISTS audits_auditable_type_auditable_id_index');
 
         DB::statement('ALTER TABLE audits ALTER COLUMN auditable_id TYPE varchar(36) USING auditable_id::varchar');
@@ -20,6 +24,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement('DROP INDEX IF EXISTS audits_auditable_type_auditable_id_index');
 
         DB::statement('ALTER TABLE audits ALTER COLUMN auditable_id TYPE bigint USING auditable_id::bigint');
