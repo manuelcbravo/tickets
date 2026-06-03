@@ -160,6 +160,12 @@ const mainNavItems: NavItem[] = [
                 permissions: ['tickets.qa.view', 'tickets.qa.manage'],
                 activePatterns: ['^/tickets/qa'],
             },
+            {
+                title: 'Cerrados',
+                href: route('tickets.closed'),
+                permissions: ['tickets.view', 'tickets.manage'],
+                activePatterns: ['^/tickets/cerrados'],
+            },
         ],
     },
     {

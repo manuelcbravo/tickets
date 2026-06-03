@@ -37,6 +37,7 @@ class TicketController extends Controller
     {
         $tickets = Ticket::query()
             ->with(['cliente:id,nombre,razon_social', 'proyecto:id,nombre', 'responsable:id,name', 'estado:id,nombre', 'prioridad:id,nombre', 'tipo:id,nombre', 'sla'])
+            ->whereNull('closed_at')
             ->when($request->string('search')->toString(), function ($query, string $search): void {
                 $query->where(function ($nested) use ($search): void {
                     $nested->where('folio', 'ilike', "%{$search}%")
@@ -239,6 +240,36 @@ class TicketController extends Controller
         return redirect()
             ->route('tickets.index')
             ->with('success', 'Ticket eliminado correctamente.');
+    }
+
+    public function closed(Request $request): Response
+    {
+        $tickets = Ticket::query()
+            ->with(['cliente:id,nombre,razon_social', 'proyecto:id,nombre', 'responsable:id,name', 'estado:id,nombre', 'tipo:id,nombre', 'cerradoPor:id,name'])
+            ->whereNotNull('closed_at')
+            ->when($request->string('search')->toString(), function ($query, string $search): void {
+                $query->where(function ($nested) use ($search): void {
+                    $nested->where('folio', 'ilike', "%{$search}%")
+                        ->orWhere('titulo', 'ilike', "%{$search}%")
+                        ->orWhere('descripcion', 'ilike', "%{$search}%");
+                });
+            })
+            ->when($request->input('cliente_id'), fn ($query, $value) => $query->where('cliente_id', $value))
+            ->when($request->input('proyecto_id'), fn ($query, $value) => $query->where('proyecto_id', $value))
+            ->when($request->input('responsable_id'), fn ($query, $value) => $query->where('responsable_id', $value))
+            ->when($request->input('tipo_id'), fn ($query, $value) => $query->where('tipo_id', $value))
+            ->orderByDesc('closed_at')
+            ->paginate(15)
+            ->withQueryString();
+
+        return Inertia::render('tickets/closed', [
+            'tickets' => $tickets,
+            'filters' => $request->only(['search', 'cliente_id', 'proyecto_id', 'responsable_id', 'tipo_id']),
+            'clientes' => Client::query()->orderBy('nombre')->get(['id', 'nombre', 'razon_social']),
+            'proyectos' => Proyecto::query()->orderBy('nombre')->get(['id', 'client_id', 'nombre']),
+            'tipos' => CatTicketTipo::query()->where('activo', true)->orderBy('orden')->get(['id', 'nombre']),
+            'users' => User::query()->orderBy('name')->get(['id', 'name']),
+        ]);
     }
 
     private function options(): array

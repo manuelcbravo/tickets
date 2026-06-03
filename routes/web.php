@@ -610,6 +610,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('qa', [TicketQaDashboardController::class, 'index'])
             ->middleware('permission:tickets.qa.view|tickets.qa.manage')
             ->name('qa.index');
+        Route::get('cerrados', [TicketController::class, 'closed'])
+            ->middleware('permission:tickets.view|tickets.manage')
+            ->name('closed');
 
         Route::get('/', [TicketController::class, 'index'])->middleware('permission:tickets.view')->name('index');
         Route::get('create', [TicketController::class, 'create'])->middleware('permission:tickets.create')->name('create');

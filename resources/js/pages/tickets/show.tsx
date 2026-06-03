@@ -1046,6 +1046,7 @@ export default function TicketsShow({ ticket, estados, users, contactos, knowled
                             <div className="flex flex-wrap gap-2">
                                 {canManageQa && <Button variant="outline" onClick={() => router.post(route('tickets.qa.test-cases.generate', ticket.id), {}, { preserveScroll: true })}><CheckCircle2 className="size-4" /> Generar casos</Button>}
                                 {canManageQa && <Button onClick={() => openTestCaseDialog()}><Plus className="size-4" /> Caso QA</Button>}
+                                {canClose && !ticket.closed_at && <Button variant="destructive" onClick={() => setCloseOpen(true)}><XCircle className="size-4" /> Cerrar ticket</Button>}
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-5">
