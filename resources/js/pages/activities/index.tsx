@@ -359,6 +359,44 @@ export default function ActivitiesIndex({
         if (updated) setDetailActivity(updated);
     }, [activities]);
 
+    const openDetailDialog = (activity: Activity) => {
+        setDetailActivity(activity);
+        const url = new URL(window.location.href);
+        url.searchParams.set('detail', activity.id);
+        window.history.pushState({ detail: activity.id }, '', url.toString());
+    };
+
+    const closeDetailDialog = () => {
+        setDetailActivity(null);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('detail');
+        window.history.replaceState({}, '', url.toString());
+    };
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const detailId = params.get('detail');
+        if (detailId) {
+            const found = activities.find((a) => a.id === detailId);
+            if (found) setDetailActivity(found);
+        }
+    }, []);
+
+    useEffect(() => {
+        const handlePopState = () => {
+            const params = new URLSearchParams(window.location.search);
+            const detailId = params.get('detail');
+            if (detailId) {
+                const found = activities.find((a) => a.id === detailId);
+                if (found) setDetailActivity(found);
+            } else {
+                setDetailActivity(null);
+            }
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [activities]);
+
     const defaultActivity: ActivityForm = {
         proyecto_id: projects[0]?.id ?? '',
         titulo: '',
@@ -553,7 +591,7 @@ export default function ActivitiesIndex({
                     <button
                         type="button"
                         className="text-left font-medium hover:text-primary hover:underline"
-                        onClick={() => setDetailActivity(activity)}
+                        onClick={() => openDetailDialog(activity)}
                     >
                         {activity.titulo}
                     </button>
@@ -654,7 +692,7 @@ export default function ActivitiesIndex({
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setDetailActivity(activity)}>
+                        <DropdownMenuItem onClick={() => openDetailDialog(activity)}>
                                 <Eye className="mr-2 size-4" /> Ver resumen
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
@@ -999,7 +1037,7 @@ export default function ActivitiesIndex({
                                             <ContextMenu key={activity.id}>
                                                 <ContextMenuTrigger asChild>
                                                     <Card
-                                                        onClick={() => setDetailActivity(activity)}
+                                                        onClick={() => openDetailDialog(activity)}
                                                         draggable={
                                                             canMoveKanban
                                                         }
@@ -1088,7 +1126,7 @@ export default function ActivitiesIndex({
                                                 >
                                                     <ContextMenuItem
                                                         onSelect={() =>
-                                                            setDetailActivity(
+                                                            openDetailDialog(
                                                                 activity,
                                                             )
                                                         }
@@ -1214,7 +1252,7 @@ export default function ActivitiesIndex({
                     <GanttSchedule
                         activities={datedScheduleActivities}
                         unscheduledActivities={unscheduledActivities}
-                        onSelectActivity={setDetailActivity}
+                        onSelectActivity={openDetailDialog}
                     />
                 )}
             </div>
@@ -1222,7 +1260,7 @@ export default function ActivitiesIndex({
             <ActivityDetailDialog
                 activity={detailActivity}
                 open={detailActivity !== null}
-                onOpenChange={(open) => !open && setDetailActivity(null)}
+                onOpenChange={(open) => !open && closeDetailDialog()}
                 users={users}
                 estadoOptions={estadoOptions}
                 prioridadOptions={prioridadOptions}
@@ -1783,6 +1821,12 @@ function ActivityDetailDialog({
         fecha_limite: '',
         minutos_estimados: '',
     });
+    const subtaskForm = useForm({ titulo: '', tipo: tipoOptions[0] ?? 'tarea', prioridad: 'media' });
+    const timeForm = useForm({ descripcion: '', minutos: '', fecha: new Date().toISOString().slice(0, 10) });
+    const commentForm = useForm({ descripcion: '' });
+    const [subtaskFormOpen, setSubtaskFormOpen] = useState(false);
+    const [timeFormOpen, setTimeFormOpen] = useState(false);
+    const [commentFormOpen, setCommentFormOpen] = useState(false);
 
     useEffect(() => {
         if (!activity) return;
@@ -1804,11 +1848,40 @@ function ActivityDetailDialog({
                 : '',
         });
         form.clearErrors();
+        setSubtaskFormOpen(false);
+        setTimeFormOpen(false);
+        setCommentFormOpen(false);
     }, [activity?.id]);
 
     if (!activity) return null;
 
     const projectId = activity.proyecto.id;
+
+    const submitSubtask = (e: React.FormEvent) => {
+        e.preventDefault();
+        subtaskForm.transform((d) => ({ ...d, parent_id: activity.id, proyecto_id: projectId }));
+        subtaskForm.post(route('proyectos.activities.store', projectId), {
+            preserveScroll: true,
+            onSuccess: () => { setSubtaskFormOpen(false); subtaskForm.reset(); },
+        });
+    };
+
+    const submitTime = (e: React.FormEvent) => {
+        e.preventDefault();
+        timeForm.post(route('proyectos.activities.times.store', [projectId, activity.id]), {
+            preserveScroll: true,
+            onSuccess: () => { setTimeFormOpen(false); timeForm.setData({ descripcion: '', minutos: '', fecha: new Date().toISOString().slice(0, 10) }); },
+        });
+    };
+
+    const submitComment = (e: React.FormEvent) => {
+        e.preventDefault();
+        commentForm.transform((d) => ({ ...d, fecha: new Date().toISOString().slice(0, 10) }));
+        commentForm.post(route('proyectos.activities.times.store', [projectId, activity.id]), {
+            preserveScroll: true,
+            onSuccess: () => { setCommentFormOpen(false); commentForm.reset(); },
+        });
+    };
     const relatedTickets = [
         activity.ticket ? { id: 'main', tipo_relacion: 'principal', ticket: activity.ticket } : null,
         ...(activity.ticket_links ?? []),
@@ -1968,9 +2041,39 @@ function ActivityDetailDialog({
 
                         <DialogSection
                             title="Subtareas"
-                            empty={(activity.children ?? []).length === 0}
+                            empty={(activity.children ?? []).length === 0 && !subtaskFormOpen}
                             emptyMessage="Sin subtareas registradas."
+                            action={canManage && !subtaskFormOpen ? (
+                                <Button size="sm" variant="outline" onClick={() => setSubtaskFormOpen(true)}>
+                                    <Plus className="size-4" /> Agregar subtarea
+                                </Button>
+                            ) : undefined}
                         >
+                            {subtaskFormOpen && (
+                                <form onSubmit={submitSubtask} className="space-y-3 rounded-md border p-3">
+                                    <FormInputField id="subtask-title" label="Titulo" value={subtaskForm.data.titulo} error={subtaskForm.errors.titulo} onChange={(e) => subtaskForm.setData('titulo', e.target.value)} />
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-muted-foreground">Tipo</Label>
+                                            <Select value={subtaskForm.data.tipo} onValueChange={(v) => subtaskForm.setData('tipo', v)}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>{tipoOptions.map((o) => <SelectItem key={o} value={o}>{label(o)}</SelectItem>)}</SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-muted-foreground">Prioridad</Label>
+                                            <Select value={subtaskForm.data.prioridad} onValueChange={(v) => subtaskForm.setData('prioridad', v)}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>{prioridadOptions.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                        <Button type="button" size="sm" variant="outline" onClick={() => { setSubtaskFormOpen(false); subtaskForm.reset(); }}>Cancelar</Button>
+                                        <Button type="submit" size="sm" disabled={subtaskForm.processing}>Guardar subtarea</Button>
+                                    </div>
+                                </form>
+                            )}
                             {activity.children?.map((child) => (
                                 <RelatedActivityRow key={child.id} activity={child} />
                             ))}
@@ -2012,45 +2115,75 @@ function ActivityDetailDialog({
                         </DialogSection>
 
                         <DialogSection
-                            title="Actividad / Comentarios"
-                            empty={(activity.tiempos ?? []).length === 0}
-                            emptyMessage="Sin comentarios registrados."
-                            action={
-                                canRegisterTime ? (
-                                    <Button asChild size="sm" variant="outline">
-                                        <Link
-                                            href={route(
-                                                'proyectos.activities.times.create',
-                                                [projectId, activity.id],
-                                            )}
-                                        >
-                                            <MessageSquare className="size-4" />
-                                            Agregar comentario
-                                        </Link>
-                                    </Button>
-                                ) : null
-                            }
+                            title="Tiempos"
+                            empty={(activity.tiempos ?? []).filter((t) => t.minutos && t.minutos > 0).length === 0 && !timeFormOpen}
+                            emptyMessage="Sin tiempos registrados."
+                            action={canRegisterTime && !timeFormOpen ? (
+                                <Button size="sm" variant="outline" onClick={() => setTimeFormOpen(true)}>
+                                    <Clock className="size-4" /> Registrar tiempo
+                                </Button>
+                            ) : undefined}
                         >
-                            {activity.tiempos?.map((time) => (
+                            {timeFormOpen && (
+                                <form onSubmit={submitTime} className="space-y-3 rounded-md border p-3">
+                                    <FormTextareaField id="time-desc" label="Descripcion" value={timeForm.data.descripcion} error={timeForm.errors.descripcion} rows={2} onChange={(e) => timeForm.setData('descripcion', e.target.value)} />
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <FormInputField id="time-min" label="Minutos" type="number" min="1" value={timeForm.data.minutos} error={timeForm.errors.minutos} onChange={(e) => timeForm.setData('minutos', e.target.value)} />
+                                        <FormInputField id="time-date" label="Fecha" type="date" value={timeForm.data.fecha} error={timeForm.errors.fecha} onChange={(e) => timeForm.setData('fecha', e.target.value)} />
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                        <Button type="button" size="sm" variant="outline" onClick={() => { setTimeFormOpen(false); timeForm.reset(); }}>Cancelar</Button>
+                                        <Button type="submit" size="sm" disabled={timeForm.processing}>Guardar tiempo</Button>
+                                    </div>
+                                </form>
+                            )}
+                            {(activity.tiempos ?? []).filter((t) => t.minutos && t.minutos > 0).map((time) => (
                                 <div key={time.id} className="flex gap-3 rounded-md border p-3">
                                     <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                                         {initials(time.usuario?.name)}
                                     </div>
                                     <div className="min-w-0 flex-1 space-y-1">
                                         <div className="flex flex-wrap items-center gap-2 text-sm">
-                                            <span className="font-medium">
-                                                {time.usuario?.name ?? 'Sistema'}
-                                            </span>
-                                            <Badge variant="outline">
-                                                {formatMinutes(time.minutos)}
-                                            </Badge>
-                                            <span className="text-xs text-muted-foreground">
-                                                {formatDate(time.created_at ?? time.fecha)}
-                                            </span>
+                                            <span className="font-medium">{time.usuario?.name ?? 'Sistema'}</span>
+                                            <Badge variant="outline">{formatMinutes(time.minutos)}</Badge>
+                                            <span className="text-xs text-muted-foreground">{formatDate(time.created_at ?? time.fecha)}</span>
                                         </div>
-                                        <p className="text-sm whitespace-pre-line text-muted-foreground">
-                                            {time.descripcion}
-                                        </p>
+                                        <p className="text-sm whitespace-pre-line text-muted-foreground">{time.descripcion}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </DialogSection>
+
+                        <DialogSection
+                            title="Comentarios"
+                            empty={(activity.tiempos ?? []).filter((t) => !t.minutos || t.minutos === 0).length === 0 && !commentFormOpen}
+                            emptyMessage="Sin comentarios registrados."
+                            action={canRegisterTime && !commentFormOpen ? (
+                                <Button size="sm" variant="outline" onClick={() => setCommentFormOpen(true)}>
+                                    <MessageSquare className="size-4" /> Agregar comentario
+                                </Button>
+                            ) : undefined}
+                        >
+                            {commentFormOpen && (
+                                <form onSubmit={submitComment} className="space-y-3 rounded-md border p-3">
+                                    <FormTextareaField id="comment-desc" label="Comentario" value={commentForm.data.descripcion} error={commentForm.errors.descripcion} rows={3} onChange={(e) => commentForm.setData('descripcion', e.target.value)} />
+                                    <div className="flex justify-end gap-2">
+                                        <Button type="button" size="sm" variant="outline" onClick={() => { setCommentFormOpen(false); commentForm.reset(); }}>Cancelar</Button>
+                                        <Button type="submit" size="sm" disabled={commentForm.processing}>Guardar comentario</Button>
+                                    </div>
+                                </form>
+                            )}
+                            {(activity.tiempos ?? []).filter((t) => !t.minutos || t.minutos === 0).map((time) => (
+                                <div key={time.id} className="flex gap-3 rounded-md border p-3">
+                                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                                        {initials(time.usuario?.name)}
+                                    </div>
+                                    <div className="min-w-0 flex-1 space-y-1">
+                                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                                            <span className="font-medium">{time.usuario?.name ?? 'Sistema'}</span>
+                                            <span className="text-xs text-muted-foreground">{formatDate(time.created_at ?? time.fecha)}</span>
+                                        </div>
+                                        <p className="text-sm whitespace-pre-line text-muted-foreground">{time.descripcion}</p>
                                     </div>
                                 </div>
                             ))}
@@ -2142,19 +2275,6 @@ function ActivityDetailDialog({
                         </div>
 
                         <div className="space-y-2 rounded-lg border p-4">
-                            {canMoveKanban && (
-                                <Button asChild variant="outline" className="w-full justify-start">
-                                    <Link
-                                        href={route('proyectos.activities.kanban.edit', [
-                                            projectId,
-                                            activity.id,
-                                        ])}
-                                    >
-                                        <KanbanSquare className="size-4" />
-                                        Mover en kanban
-                                    </Link>
-                                </Button>
-                            )}
                             {canRegisterTime && (
                                 <Button asChild variant="outline" className="w-full justify-start">
                                     <Link
