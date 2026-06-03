@@ -7,7 +7,9 @@ use App\Http\Requests\Knowledge\CreateKnowledgeFromTicketRequest;
 use App\Http\Requests\Knowledge\StoreKnowledgeArticleRequest;
 use App\Http\Requests\Knowledge\UpdateKnowledgeArticleRequest;
 use App\Models\Client;
+use App\Models\File;
 use App\Models\KnowledgeArticle;
+use App\Models\KnowledgeArticleVersion;
 use App\Models\KnowledgeCategory;
 use App\Models\Proyecto;
 use App\Models\ProyectoModulo;
@@ -15,9 +17,11 @@ use App\Models\Ticket;
 use App\Services\Knowledge\KnowledgeArticleService;
 use App\Services\Knowledge\KnowledgeFromTicketService;
 use App\Services\Knowledge\KnowledgeSearchService;
+use App\Services\Knowledge\TicketKnowledgeArticleService;
 use App\Services\Tickets\TicketHistoryService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -64,15 +68,38 @@ class KnowledgeArticleController extends Controller
             'versions.changedBy:id,name',
         ]);
 
+        $files = File::query()
+            ->where('related_table', 'knowledge_articles')
+            ->where('related_uuid', $article->id)
+            ->latest()
+            ->get();
+
+        $linkedTicketIds = $article->tickets->pluck('id');
+        $availableTickets = Ticket::query()
+            ->when($article->proyecto_id, fn ($q) => $q->where('proyecto_id', $article->proyecto_id))
+            ->whereNotIn('id', $linkedTicketIds)
+            ->orderByDesc('created_at')
+            ->limit(100)
+            ->get(['id', 'folio', 'titulo']);
+
         return Inertia::render('knowledge/show', [
             'article' => $article,
+            'files' => $files,
+            'availableTickets' => $availableTickets,
         ]);
     }
 
     public function edit(KnowledgeArticle $article): Response
     {
+        $files = File::query()
+            ->where('related_table', 'knowledge_articles')
+            ->where('related_uuid', $article->id)
+            ->latest()
+            ->get();
+
         return Inertia::render('knowledge/edit', [
             'article' => $article,
+            'files' => $files,
             ...$this->options(),
         ]);
     }
@@ -117,6 +144,43 @@ class KnowledgeArticleController extends Controller
         $service->archive($article, request()->user()->id);
 
         return back()->with('success', 'Articulo archivado correctamente.');
+    }
+
+    public function linkTicket(Request $request, KnowledgeArticle $article, TicketKnowledgeArticleService $service): RedirectResponse
+    {
+        $validated = $request->validate([
+            'ticket_id' => ['required', 'uuid', 'exists:tickets,id'],
+            'tipo_relacion' => ['required', 'string', Rule::in(['solucion', 'relacionado', 'referencia', 'creado_desde_ticket', 'respuesta_sugerida'])],
+            'notas' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $ticket = Ticket::findOrFail($validated['ticket_id']);
+        $service->link($ticket, $article, $validated, $request->user()->id);
+
+        return back()->with('success', 'Ticket vinculado correctamente.');
+    }
+
+    public function unlinkTicket(KnowledgeArticle $article, Ticket $ticket, TicketKnowledgeArticleService $service): RedirectResponse
+    {
+        $service->unlink($ticket, $article, request()->user()->id);
+
+        return back()->with('success', 'Ticket desvinculado correctamente.');
+    }
+
+    public function restoreVersion(Request $request, KnowledgeArticle $article, KnowledgeArticleVersion $version, KnowledgeArticleService $service): RedirectResponse
+    {
+        abort_unless($version->knowledge_article_id === $article->id, 404);
+
+        $service->createVersion($article, $request->user()->id, "Auto-guardado antes de restaurar version {$version->version}.");
+
+        $article->update([
+            'titulo' => $version->titulo,
+            'resumen' => $version->resumen,
+            'contenido' => $version->contenido,
+            'actualizado_por_id' => $request->user()->id,
+        ]);
+
+        return back()->with('success', "Articulo restaurado a la version {$version->version}.");
     }
 
     public function createFromTicket(Ticket $ticket, KnowledgeFromTicketService $service): Response

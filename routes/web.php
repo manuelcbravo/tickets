@@ -267,6 +267,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('{article}/archive', [KnowledgeArticleController::class, 'archive'])
             ->middleware('permission:knowledge.manage')
             ->name('archive');
+        Route::post('{article}/tickets', [KnowledgeArticleController::class, 'linkTicket'])
+            ->middleware('permission:knowledge.manage|knowledge.link')
+            ->name('tickets.store');
+        Route::delete('{article}/tickets/{ticket}', [KnowledgeArticleController::class, 'unlinkTicket'])
+            ->middleware('permission:knowledge.manage|knowledge.link')
+            ->name('tickets.destroy');
+        Route::post('{article}/versions/{version}/restore', [KnowledgeArticleController::class, 'restoreVersion'])
+            ->middleware('permission:knowledge.manage')
+            ->name('versions.restore');
     });
 
     Route::resource('clientes', ClienteController::class)

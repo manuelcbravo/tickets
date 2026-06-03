@@ -102,6 +102,9 @@ class FileController extends Controller
             'proyecto_actividades' => $action === 'view'
                 ? ['project-planning.activities.view', 'project-planning.activities.manage']
                 : ['project-planning.activities.manage'],
+            'knowledge_articles' => $action === 'view'
+                ? []
+                : ['knowledge.manage'],
             default => [],
         };
 

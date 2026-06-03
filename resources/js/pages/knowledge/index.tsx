@@ -1,6 +1,6 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { toast } from 'sonner';
-import { Archive, Eye, History, MoreHorizontal, Pencil, Plus, Search, Send, Ticket, Trash2, XCircle } from 'lucide-react';
+import { Archive, Eye, History, MoreHorizontal, Paperclip, Pencil, Plus, Search, Send, Ticket, Trash2, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { route } from 'ziggy-js';
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
@@ -90,6 +90,7 @@ export default function KnowledgeIndex({
                             {canManage && <DropdownMenuItem asChild><Link href={route('knowledge.edit', row.id)}><Pencil className="mr-2 size-4" /> Editar</Link></DropdownMenuItem>}
                             <DropdownMenuItem asChild><Link href={`${articleDetail}#tickets-relacionados`}><Ticket className="mr-2 size-4" /> Tickets relacionados</Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href={`${articleDetail}#versiones`}><History className="mr-2 size-4" /> Versiones</Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href={`${articleDetail}#archivos`}><Paperclip className="mr-2 size-4" /> Archivos</Link></DropdownMenuItem>
                             {canPublish && row.estatus !== 'publicado' && <DropdownMenuItem onClick={() => publish(row)}><Send className="mr-2 size-4" /> Publicar</DropdownMenuItem>}
                             {canManage && row.estatus !== 'archivado' && <DropdownMenuItem onClick={() => router.patch(route('knowledge.archive', row.id), {}, { preserveScroll: true })}><Archive className="mr-2 size-4" /> Archivar</DropdownMenuItem>}
                             {canDelete && <><DropdownMenuSeparator /><DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(row)}><Trash2 className="mr-2 size-4" /> Eliminar</DropdownMenuItem></>}

@@ -1,7 +1,9 @@
-import { Link, useForm } from '@inertiajs/react';
+import { Link, router, useForm } from '@inertiajs/react';
+import { Paperclip } from 'lucide-react';
 import type React from 'react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { route } from 'ziggy-js';
+import { FilePickerDialog } from '@/components/file-picker-dialog';
 import { FormInputField } from '@/components/form-input-field';
 import { FormTextareaField } from '@/components/form-textarea-field';
 import { LoadingSubmitButton } from '@/components/loading-submit-button';
@@ -11,12 +13,15 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { KnowledgeArticle, KnowledgeFormValues, KnowledgeOptionProps } from '@/types';
 
+type ArticleFile = { id: string; original_name: string; path: string; url: string; mime_type: string | null; size: number };
+
 type KnowledgeFormProps = KnowledgeOptionProps & {
     article?: KnowledgeArticle;
     defaults?: Partial<KnowledgeFormValues>;
     submitUrl: string;
     submitLabel: string;
     method?: 'post' | 'put';
+    files?: ArticleFile[];
 };
 
 const none = 'none';
@@ -50,7 +55,9 @@ export function KnowledgeForm({
     tipos,
     visibilidades,
     estatuses,
+    files = [],
 }: KnowledgeFormProps) {
+    const [filesOpen, setFilesOpen] = useState(false);
     const form = useForm<KnowledgeFormValues>({
         ...defaultValues,
         tipo: tipos[0] ?? defaultValues.tipo,
@@ -136,10 +143,59 @@ export function KnowledgeForm({
                 )}
             </div>
 
+            {article && (
+                <div className="rounded-xl border border-sidebar-border/70 bg-sidebar-accent/20 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Paperclip className="size-4 text-muted-foreground" />
+                            <span className="text-sm font-medium">Archivos adjuntos {files.length > 0 && `(${files.length})`}</span>
+                        </div>
+                        <Button type="button" size="sm" variant="outline" onClick={() => setFilesOpen(true)}>Subir archivo</Button>
+                    </div>
+                    {files.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Sin archivos adjuntos. Puedes subir imagenes, PDFs, documentos, etc.</p>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                            {files.map((file) => (
+                                <div key={file.id} className="flex flex-col overflow-hidden rounded-md border border-border">
+                                    {file.mime_type?.startsWith('image/') ? (
+                                        <img src={file.url} alt={file.original_name} className="h-20 w-full object-cover" />
+                                    ) : (
+                                        <div className="flex h-20 w-full items-center justify-center bg-muted/30">
+                                            <Paperclip className="size-6 text-muted-foreground" />
+                                        </div>
+                                    )}
+                                    <div className="p-2 text-[11px]">
+                                        <p className="truncate font-medium">{file.original_name}</p>
+                                        <p className="text-muted-foreground">{(file.size / 1024).toFixed(0)} KB</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div className="flex justify-end gap-2">
                 <Button asChild variant="outline"><Link href={route('knowledge.index')}>Cancelar</Link></Button>
                 <LoadingSubmitButton label={submitLabel} processing={form.processing} />
             </div>
+
+            {article && (
+                <FilePickerDialog
+                    open={filesOpen}
+                    onOpenChange={setFilesOpen}
+                    title={`Archivos · ${article.titulo}`}
+                    description="Sube archivos relacionados a este articulo."
+                    storedFiles={files}
+                    tableId="knowledge_articles"
+                    relatedUuid={article.id}
+                    accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
+                    maxSizeHint="Maximo 10MB"
+                    onDownloadStoredFile={(file) => window.open(file.url, '_blank', 'noopener,noreferrer')}
+                    onDeleteStoredFile={(fileId) => router.delete(route('files.destroy', fileId), { data: { related_table: 'knowledge_articles', related_uuid: article.id }, preserveScroll: true })}
+                />
+            )}
         </form>
     );
 }

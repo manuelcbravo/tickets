@@ -42,6 +42,7 @@ export type KnowledgeArticle = {
     pivot?: { tipo_relacion: string; notas?: string | null };
     tickets?: Array<{ id: string; folio: string; titulo: string; pivot?: { tipo_relacion: string; notas?: string | null } }>;
     versions?: KnowledgeArticleVersion[];
+    files?: Array<{ id: string; original_name: string; path: string; url: string; mime_type: string | null; size: number }>;
 };
 
 export type KnowledgeArticleVersion = {
