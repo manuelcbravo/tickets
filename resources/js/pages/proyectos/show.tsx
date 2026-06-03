@@ -1,5 +1,5 @@
 import { Head, Link, usePage } from '@inertiajs/react';
-import { Banknote, Boxes, Cloud, FileText, KanbanSquare, ListChecks, Pencil, Receipt, Ticket, WalletCards } from 'lucide-react';
+import { Banknote, Boxes, Cloud, FileText, ListChecks, Pencil, Receipt, Ticket, WalletCards } from 'lucide-react';
 import type React from 'react';
 import { route } from 'ziggy-js';
 import { ModuleHeader } from '@/components/module-header';
@@ -64,7 +64,6 @@ export default function ProyectoShow({ proyecto, summary }: { proyecto: Proyecto
         canManage && section('Modulos', 'Gestiona modulos funcionales usados para clasificar tickets.', 'Abrir modulos', route('proyectos.modulos.index', proyecto.id), Boxes, String(summary.total_modulos)),
         can('project-planning.documents.view', 'project-planning.documents.manage') && section('Documentos', 'Consulta y administra contratos, requerimientos, manuales y documentacion tecnica.', 'Abrir documentos', route('proyectos.documents.index', proyecto.id), FileText, String(summary.total_documentos)),
         can('project-planning.activities.view', 'project-planning.activities.manage') && section('Actividades', 'Gestiona tareas internas, responsables, estados y tiempos.', 'Abrir actividades', route('proyectos.activities.index', proyecto.id), ListChecks, `${summary.actividades_pendientes} pendientes`),
-        can('project-planning.kanban.view', 'project-planning.kanban.manage') && section('Kanban', 'Visualiza el flujo de trabajo del proyecto por columnas.', 'Abrir kanban', route('proyectos.activities.kanban.index', proyecto.id), KanbanSquare, `${summary.actividades_vencidas} vencidas`),
         can('tickets.view', 'tickets.manage') && section('Tickets', 'Consulta solicitudes relacionadas al proyecto y su estado.', 'Abrir tickets', route('proyectos.tickets.index', proyecto.id), Ticket, `${summary.tickets_abiertos} abiertos`),
         can('project-billing.view', 'project-billing.reports', 'project-billing.manage') && section('Cobranza', 'Consulta plan de cobro, saldos, cargos y pagos del proyecto.', 'Abrir cobranza', route('proyectos.billing.index', proyecto.id), Banknote, money(summary.saldo_pendiente)),
         can('project-billing.charges.view', 'project-billing.charges.manage') && section('Cargos', 'Revisa cuentas por cobrar, vencimientos y saldos.', 'Abrir cargos', route('proyectos.billing.charges.index', proyecto.id), Receipt, String(summary.total_cargos)),

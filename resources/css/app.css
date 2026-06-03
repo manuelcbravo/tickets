@@ -2,6 +2,8 @@
 
 @import 'tw-animate-css';
 
+@import '../../node_modules/frappe-gantt/dist/frappe-gantt.css';
+
 @source '../views';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 
@@ -140,4 +142,117 @@
     body {
         @apply bg-background text-foreground;
     }
+}
+
+:root {
+    --g-arrow-color: var(--foreground);
+    --g-bar-color: var(--card);
+    --g-bar-border: var(--border);
+    --g-tick-color-thick: var(--border);
+    --g-tick-color: color-mix(in oklch, var(--border) 70%, transparent);
+    --g-actions-background: var(--muted);
+    --g-border-color: var(--border);
+    --g-text-muted: var(--muted-foreground);
+    --g-text-light: var(--primary-foreground);
+    --g-text-dark: var(--foreground);
+    --g-progress-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+    --g-handle-color: var(--foreground);
+    --g-weekend-label-color: var(--muted);
+    --g-expected-progress: var(--chart-2);
+    --g-header-background: var(--card);
+    --g-row-color: var(--card);
+    --g-row-border-color: var(--border);
+    --g-today-highlight: var(--primary);
+    --g-popup-actions: var(--muted);
+    --g-weekend-highlight-color: color-mix(in oklch, var(--muted) 70%, transparent);
+}
+
+.dark {
+    --g-arrow-color: var(--foreground);
+    --g-bar-color: var(--card);
+    --g-bar-border: var(--border);
+    --g-tick-color-thick: var(--border);
+    --g-tick-color: color-mix(in oklch, var(--border) 65%, transparent);
+    --g-actions-background: var(--muted);
+    --g-border-color: var(--border);
+    --g-text-muted: var(--muted-foreground);
+    --g-text-light: var(--primary-foreground);
+    --g-text-dark: var(--foreground);
+    --g-progress-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+    --g-handle-color: var(--foreground);
+    --g-weekend-label-color: var(--muted);
+    --g-expected-progress: var(--chart-2);
+    --g-header-background: var(--card);
+    --g-row-color: var(--card);
+    --g-row-border-color: var(--border);
+    --g-today-highlight: var(--primary);
+    --g-popup-actions: var(--muted);
+    --g-weekend-highlight-color: color-mix(in oklch, var(--muted) 75%, transparent);
+}
+
+.gantt-container {
+    border-radius: 0.5rem;
+    background: var(--card);
+    color: var(--foreground);
+}
+
+.gantt-container .grid-header,
+.gantt-container .grid-row {
+    fill: var(--card);
+}
+
+.gantt-container .grid-row:nth-child(even) {
+    fill: color-mix(in oklch, var(--muted) 35%, transparent);
+}
+
+.gantt-container .lower-text,
+.gantt-container .upper-text,
+.gantt-container .bar-label {
+    fill: var(--foreground);
+    color: var(--foreground);
+}
+
+.gantt-container .current-date-highlight {
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
+.gantt-container .tick,
+.gantt-container .row-line {
+    stroke: var(--border);
+}
+
+.gantt-container .activity-priority-baja .bar {
+    fill: oklch(0.62 0.13 165);
+}
+
+.gantt-container .activity-priority-media .bar {
+    fill: oklch(0.65 0.16 80);
+}
+
+.gantt-container .activity-priority-alta .bar {
+    fill: oklch(0.57 0.18 35);
+}
+
+.gantt-container .activity-priority-critica .bar {
+    fill: var(--destructive);
+}
+
+.gantt-container .bar-progress {
+    fill: color-mix(in oklch, var(--foreground) 25%, transparent);
+}
+
+.gantt-container .popup-wrapper {
+    border: 1px solid var(--border);
+    background: var(--popover);
+    color: var(--foreground);
+}
+
+.gantt-container .popup-wrapper .title,
+.gantt-container .popup-wrapper .subtitle {
+    color: var(--popover-foreground);
+}
+
+.gantt-container .popup-wrapper .details {
+    color: var(--muted-foreground);
 }

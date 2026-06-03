@@ -1,6 +1,6 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { toast } from 'sonner';
-import { Banknote, Boxes, Cloud, Eye, FileText, FolderKanban, KanbanSquare, ListChecks, MoreHorizontal, Pencil, Plus, Receipt, Ticket, Trash2, WalletCards } from 'lucide-react';
+import { Banknote, Boxes, Cloud, Eye, FileText, ListChecks, MoreHorizontal, Pencil, Plus, Receipt, Ticket, Trash2, WalletCards } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { route } from 'ziggy-js';
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
@@ -69,9 +69,7 @@ export default function ProyectosIndex({
     const canViewBilling = permissions.some((permission) => ['project-billing.view', 'project-billing.reports', 'project-billing.manage'].includes(permission));
     const canViewCharges = permissions.includes('project-billing.charges.view') || permissions.includes('project-billing.charges.manage');
     const canViewPayments = permissions.includes('project-billing.payments.view') || permissions.includes('project-billing.payments.manage');
-    const canViewPlanning = permissions.includes('project-planning.view');
     const canViewActivities = permissions.includes('project-planning.activities.view') || permissions.includes('project-planning.activities.manage');
-    const canViewKanban = permissions.includes('project-planning.kanban.view') || permissions.includes('project-planning.kanban.manage');
     const canViewTickets = permissions.includes('tickets.view') || permissions.includes('tickets.manage');
     const canViewProjectSections = permissions.includes('proyectos.view') || permissions.includes('proyectos.manage');
 
@@ -164,6 +162,20 @@ export default function ProyectosIndex({
                             <DropdownMenuItem asChild>
                                 <Link href={route('proyectos.documents.index', proyecto.id)}>
                                     <FileText className="mr-2 size-4" /> Documentos
+                                </Link>
+                            </DropdownMenuItem>
+                        )}
+                        {canViewActivities && (
+                            <DropdownMenuItem asChild>
+                                <Link href={route('proyectos.activities.index', proyecto.id)}>
+                                    <ListChecks className="mr-2 size-4" /> Actividades
+                                </Link>
+                            </DropdownMenuItem>
+                        )}
+                        {canViewTickets && (
+                            <DropdownMenuItem asChild>
+                                <Link href={route('proyectos.tickets.index', proyecto.id)}>
+                                    <Ticket className="mr-2 size-4" /> Tickets
                                 </Link>
                             </DropdownMenuItem>
                         )}

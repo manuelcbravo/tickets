@@ -33,11 +33,6 @@ class ProjectActivityController extends Controller
         return $this->renderModule($request, 'dashboard');
     }
 
-    public function kanban(Request $request): Response
-    {
-        return $this->renderModule($request, 'kanban');
-    }
-
     public function completed(Request $request): Response
     {
         return $this->renderModule($request, 'done');
@@ -68,12 +63,21 @@ class ProjectActivityController extends Controller
 
     private function renderModule(Request $request, string $initialView): Response
     {
+        $initialView = $this->requestedActivityView($request, $initialView);
+
         $activities = ProyectoActividad::query()
             ->with([
                 'proyecto:id,nombre,client_id',
                 'proyecto.cliente:id,nombre,razon_social',
                 'responsable:id,name',
+                'reportadoPor:id,name',
+                'createdBy:id,name',
+                'updatedBy:id,name',
                 'ticket:id,folio,titulo',
+                'parent:id,titulo,estado,prioridad,kanban_column',
+                'children:id,parent_id,titulo,estado,prioridad,kanban_column',
+                'tiempos.usuario:id,name',
+                'ticketLinks.ticket:id,folio,titulo',
                 'files',
             ])
             ->orderByRaw('fecha_limite is null')
@@ -85,6 +89,7 @@ class ProjectActivityController extends Controller
 
         return Inertia::render('activities/index', [
             'activities' => $activities,
+            'currentProject' => null,
             'projects' => Proyecto::query()
                 ->with('cliente:id,nombre,razon_social')
                 ->orderBy('nombre')
@@ -110,6 +115,15 @@ class ProjectActivityController extends Controller
                 'real_minutes' => $activities->sum('minutos_reales'),
             ],
         ]);
+    }
+
+    private function requestedActivityView(Request $request, string $fallback): string
+    {
+        $view = $request->query('view');
+
+        return in_array($view, ['list', 'kanban', 'schedule'], true)
+            ? $view
+            : $fallback;
     }
 
     public function storeGlobal(StoreGlobalProjectActivityRequest $request, ProjectActivityService $service): RedirectResponse

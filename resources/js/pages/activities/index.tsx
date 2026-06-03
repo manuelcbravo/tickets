@@ -1,6 +1,8 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import Gantt, { type GanttTask } from 'frappe-gantt';
 import { toast } from 'sonner';
 import {
+    CalendarDays,
     CheckCircle2,
     ClipboardList,
     Clock,
@@ -8,7 +10,9 @@ import {
     ExternalLink,
     FileText,
     KanbanSquare,
+    MessageSquare,
     MoreHorizontal,
+    Paperclip,
     Pencil,
     Plus,
     Ticket,
@@ -16,7 +20,7 @@ import {
     XCircle,
 } from 'lucide-react';
 import type React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { route } from 'ziggy-js';
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 import { CrudFormDialog } from '@/components/crud-form-dialog';
@@ -42,6 +46,13 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Field, FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -63,11 +74,16 @@ type Activity = {
     estado: string;
     prioridad: string;
     responsable_id: number | null;
+    reportado_por_id?: number | null;
+    ticket_id?: string | null;
+    parent_id?: string | null;
     fecha_inicio: string | null;
     fecha_limite: string | null;
+    fecha_finalizacion?: string | null;
     minutos_estimados: number | null;
     minutos_reales: number;
     kanban_column: string;
+    tags?: string[] | null;
     proyecto: {
         id: string;
         nombre: string;
@@ -78,8 +94,38 @@ type Activity = {
         } | null;
     };
     responsable?: { id: number; name: string } | null;
+    reportado_por?: { id: number; name: string } | null;
+    created_by?: { id: number; name: string } | null;
+    updated_by?: { id: number; name: string } | null;
     ticket?: { id: string; folio: string | null; titulo: string } | null;
+    parent?: RelatedActivity | null;
+    children?: RelatedActivity[];
+    ticket_links?: ActivityTicketLink[];
+    tiempos?: ActivityTime[];
     files?: StoredFile[];
+};
+
+type ActivityTime = {
+    id: string;
+    descripcion: string;
+    minutos: number;
+    fecha: string;
+    created_at?: string | null;
+    usuario?: { id: number; name: string } | null;
+};
+
+type ActivityTicketLink = {
+    id: string;
+    tipo_relacion: string;
+    ticket?: { id: string; folio: string | null; titulo: string } | null;
+};
+
+type RelatedActivity = {
+    id: string;
+    titulo: string;
+    estado: string;
+    prioridad?: string | null;
+    kanban_column?: string | null;
 };
 
 type StoredFile = {
@@ -112,6 +158,16 @@ type Metrics = {
     estimated_minutes: number;
     real_minutes: number;
 };
+
+type ModuleView = 'dashboard' | 'list' | 'kanban' | 'schedule' | 'done';
+type GanttViewMode = 'Day' | 'Week' | 'Month' | 'Year';
+
+const ganttViewOptions: { value: GanttViewMode; label: string }[] = [
+    { value: 'Day', label: 'Día' },
+    { value: 'Week', label: 'Semana' },
+    { value: 'Month', label: 'Mes' },
+    { value: 'Year', label: 'Año' },
+];
 
 type ActivityForm = {
     proyecto_id: string;
@@ -180,6 +236,61 @@ function formatDate(value: string | null): string {
     }).format(date);
 }
 
+function parseDate(value: string | null): Date | null {
+    if (!value) return null;
+
+    const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function addDays(date: Date, days: number): Date {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+
+    return next;
+}
+
+function toDateString(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+}
+
+function isOverdue(activity: Activity): boolean {
+    const dueDate = parseDate(activity.fecha_limite);
+    if (!dueDate || ['terminada', 'cancelada'].includes(activity.estado)) {
+        return false;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return dueDate < today;
+}
+
+function activityProgress(activity: Activity): number {
+    if (activity.estado === 'terminada') return 100;
+    if (!activity.minutos_estimados) return 0;
+
+    return Math.min(
+        100,
+        Math.round((activity.minutos_reales / activity.minutos_estimados) * 100),
+    );
+}
+
+function initials(name?: string | null): string {
+    return (name ?? 'S')
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0])
+        .join('')
+        .toUpperCase();
+}
+
 export default function ActivitiesIndex({
     activities,
     projects,
@@ -190,15 +301,17 @@ export default function ActivitiesIndex({
     kanbanColumns,
     initialView,
     metrics,
+    currentProject,
 }: {
     activities: Activity[];
+    currentProject?: Project | null;
     projects: Project[];
     users: UserOption[];
     estadoOptions: string[];
     prioridadOptions: string[];
     tipoOptions: string[];
     kanbanColumns: string[];
-    initialView: 'dashboard' | 'list' | 'kanban' | 'done';
+    initialView: ModuleView;
     metrics: Metrics;
 }) {
     const permissions = usePage<SharedData>().props.auth.permissions ?? [];
@@ -216,9 +329,7 @@ export default function ActivitiesIndex({
         if (flash?.error) toast.error(flash.error);
     }, [flash]);
 
-    const [view] = useState<'dashboard' | 'list' | 'kanban' | 'done'>(
-        initialView,
-    );
+    const [view, setView] = useState<ModuleView>(initialView);
     const [search, setSearch] = useState('');
     const [projectFilter, setProjectFilter] = useState('todos');
     const [responsibleFilter, setResponsibleFilter] = useState('todos');
@@ -228,6 +339,7 @@ export default function ActivitiesIndex({
         null,
     );
     const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
+    const [detailActivity, setDetailActivity] = useState<Activity | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<Activity | null>(null);
     const [filesActivity, setFilesActivity] = useState<Activity | null>(null);
     const [draggingActivityId, setDraggingActivityId] = useState<string | null>(
@@ -239,6 +351,12 @@ export default function ActivitiesIndex({
         if (!filesActivity) return;
         const updated = activities.find((a) => a.id === filesActivity.id);
         if (updated) setFilesActivity(updated);
+    }, [activities]);
+
+    useEffect(() => {
+        if (!detailActivity) return;
+        const updated = activities.find((a) => a.id === detailActivity.id);
+        if (updated) setDetailActivity(updated);
     }, [activities]);
 
     const defaultActivity: ActivityForm = {
@@ -323,16 +441,36 @@ export default function ActivitiesIndex({
     const visibleKanbanColumns = kanbanColumns.filter(
         (column) => column !== 'terminado',
     );
-    const activityHref = (activity: Activity) =>
-        projects.length === 1
-            ? route('proyectos.activities.show', [
-                  activity.proyecto.id,
-                  activity.id,
-              ])
-            : route('activities.show', activity.id);
-
+    const datedScheduleActivities = filteredActivities.filter(
+        (activity) => activity.fecha_inicio || activity.fecha_limite,
+    );
+    const unscheduledActivities = filteredActivities.filter(
+        (activity) => !activity.fecha_inicio && !activity.fecha_limite,
+    );
     const projectActivityRoute = (name: string, activity: Activity) =>
         route(name, [activity.proyecto.id, activity.id]);
+
+    const moduleBreadcrumbs: BreadcrumbItem[] = currentProject
+        ? [
+              { title: 'Proyectos', href: route('proyectos.index') },
+              {
+                  title: currentProject.nombre,
+                  href: route('proyectos.show', currentProject.id),
+              },
+              {
+                  title: 'Actividades',
+                  href: route('proyectos.activities.index', currentProject.id),
+              },
+          ]
+        : breadcrumbs;
+
+    const changeView = (nextView: Extract<ModuleView, 'list' | 'kanban' | 'schedule'>) => {
+        setView(nextView);
+
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', nextView);
+        window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+    };
 
     const openCreate = () => {
         setActiveActivity(null);
@@ -412,12 +550,24 @@ export default function ActivitiesIndex({
             accessor: (activity) => activity.titulo,
             cell: (activity) => (
                 <div className="space-y-1">
-                    <div className="font-medium">{activity.titulo}</div>
+                    <button
+                        type="button"
+                        className="text-left font-medium hover:text-primary hover:underline"
+                        onClick={() => setDetailActivity(activity)}
+                    >
+                        {activity.titulo}
+                    </button>
                     <div className="text-xs text-muted-foreground">
                         {label(activity.kanban_column)}
                     </div>
                 </div>
             ),
+        },
+        {
+            key: 'tipo',
+            header: 'Tipo',
+            accessor: (activity) => activity.tipo,
+            cell: (activity) => <Badge variant="outline">{label(activity.tipo)}</Badge>,
         },
         {
             key: 'proyecto',
@@ -458,15 +608,24 @@ export default function ActivitiesIndex({
             cell: (activity) => activity.responsable?.name ?? '-',
         },
         {
+            key: 'fecha_inicio',
+            header: 'Fecha inicio',
+            cell: (activity) => formatDate(activity.fecha_inicio),
+        },
+        {
             key: 'fecha_limite',
             header: 'Fecha limite',
             cell: (activity) => formatDate(activity.fecha_limite),
         },
         {
-            key: 'tiempo',
-            header: 'Tiempo',
-            cell: (activity) =>
-                `${formatMinutes(activity.minutos_reales)} / ${formatMinutes(activity.minutos_estimados)}`,
+            key: 'tiempo_estimado',
+            header: 'Tiempo estimado',
+            cell: (activity) => formatMinutes(activity.minutos_estimados),
+        },
+        {
+            key: 'tiempo_real',
+            header: 'Tiempo real',
+            cell: (activity) => formatMinutes(activity.minutos_reales),
         },
         {
             key: 'ticket',
@@ -495,10 +654,8 @@ export default function ActivitiesIndex({
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                            <Link href={activityHref(activity)}>
+                        <DropdownMenuItem onClick={() => setDetailActivity(activity)}>
                                 <Eye className="mr-2 size-4" /> Ver resumen
-                            </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                             <Link
@@ -602,13 +759,13 @@ export default function ActivitiesIndex({
     ];
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <AppLayout breadcrumbs={moduleBreadcrumbs}>
             <Head title="Actividades" />
 
             <div className="space-y-4 rounded-xl p-4">
                 <ModuleHeader
-                    title="Actividades"
-                    description="Gestiona el trabajo interno de los proyectos desde un solo lugar. Puedes crear actividades, filtrar por responsable o proyecto, revisar kanban y consultar lo realizado."
+                    title={currentProject ? `Actividades - ${currentProject.nombre}` : 'Actividades'}
+                    description="Gestiona el trabajo interno desde una sola pantalla con lista, kanban y cronograma."
                 >
                     {canManage && (
                         <Button onClick={openCreate}>
@@ -616,6 +773,35 @@ export default function ActivitiesIndex({
                         </Button>
                     )}
                 </ModuleHeader>
+
+                {(view === 'list' || view === 'kanban' || view === 'schedule') && (
+                    <div className="inline-flex rounded-md border bg-muted/30 p-1">
+                        <Button
+                            type="button"
+                            variant={view === 'list' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => changeView('list')}
+                        >
+                            <ClipboardList className="size-4" /> Lista
+                        </Button>
+                        <Button
+                            type="button"
+                            variant={view === 'kanban' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => changeView('kanban')}
+                        >
+                            <KanbanSquare className="size-4" /> Kanban
+                        </Button>
+                        <Button
+                            type="button"
+                            variant={view === 'schedule' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => changeView('schedule')}
+                        >
+                            <CalendarDays className="size-4" /> Cronograma
+                        </Button>
+                    </div>
+                )}
 
                 <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_180px_180px_180px]">
                     <Input
@@ -813,6 +999,7 @@ export default function ActivitiesIndex({
                                             <ContextMenu key={activity.id}>
                                                 <ContextMenuTrigger asChild>
                                                     <Card
+                                                        onClick={() => setDetailActivity(activity)}
                                                         draggable={
                                                             canMoveKanban
                                                         }
@@ -839,7 +1026,7 @@ export default function ActivitiesIndex({
                                                                 null,
                                                             );
                                                         }}
-                                                        className={`gap-3 rounded-lg py-4 shadow-none ${canMoveKanban ? 'cursor-grab active:cursor-grabbing' : ''} ${draggingActivityId === activity.id ? 'opacity-60' : ''}`}
+                                                        className={`gap-3 rounded-lg py-4 shadow-none ${canMoveKanban ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${draggingActivityId === activity.id ? 'opacity-60' : ''}`}
                                                     >
                                                         <CardHeader className="px-4">
                                                             <CardTitle className="text-sm leading-snug">
@@ -899,15 +1086,15 @@ export default function ActivitiesIndex({
                                                     alignOffset={-4}
                                                     className="w-52"
                                                 >
-                                                    <ContextMenuItem asChild>
-                                                        <Link
-                                                            href={activityHref(
+                                                    <ContextMenuItem
+                                                        onSelect={() =>
+                                                            setDetailActivity(
                                                                 activity,
-                                                            )}
-                                                        >
+                                                            )
+                                                        }
+                                                    >
                                                             <Eye className="size-4" />{' '}
                                                             Gestionar
-                                                        </Link>
                                                     </ContextMenuItem>
                                                     <ContextMenuItem asChild>
                                                         <Link
@@ -944,6 +1131,27 @@ export default function ActivitiesIndex({
                                                                 <FileText className="size-4" />{' '}
                                                                 Archivos
                                                             </ContextMenuItem>
+                                                            {canMoveKanban &&
+                                                                visibleKanbanColumns
+                                                                    .filter(
+                                                                        (targetColumn) =>
+                                                                            targetColumn !==
+                                                                            activity.kanban_column,
+                                                                    )
+                                                                    .map((targetColumn) => (
+                                                                        <ContextMenuItem
+                                                                            key={targetColumn}
+                                                                            onSelect={() =>
+                                                                                moveActivity(
+                                                                                    activity,
+                                                                                    targetColumn,
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            <KanbanSquare className="size-4" />{' '}
+                                                                            Mover a {label(targetColumn)}
+                                                                        </ContextMenuItem>
+                                                                    ))}
                                                             <ContextMenuItem
                                                                 onSelect={() =>
                                                                     router.patch(
@@ -1001,7 +1209,48 @@ export default function ActivitiesIndex({
                         })}
                     </div>
                 )}
+
+                {view === 'schedule' && (
+                    <GanttSchedule
+                        activities={datedScheduleActivities}
+                        unscheduledActivities={unscheduledActivities}
+                        onSelectActivity={setDetailActivity}
+                    />
+                )}
             </div>
+
+            <ActivityDetailDialog
+                activity={detailActivity}
+                open={detailActivity !== null}
+                onOpenChange={(open) => !open && setDetailActivity(null)}
+                users={users}
+                estadoOptions={estadoOptions}
+                prioridadOptions={prioridadOptions}
+                tipoOptions={tipoOptions}
+                canManage={canManage}
+                canRegisterTime={permissions.includes('project-planning.activities.time')}
+                canMoveKanban={canMoveKanban}
+                canCreateTicket={permissions.includes('tickets.create')}
+                canViewTickets={permissions.includes('tickets.view') || permissions.includes('tickets.manage')}
+                onFiles={() => {
+                    if (!detailActivity) return;
+                    setFilesActivity(detailActivity);
+                }}
+                onComplete={(activity) =>
+                    router.patch(
+                        route('activities.complete', activity.id),
+                        {},
+                        { preserveScroll: true },
+                    )
+                }
+                onCancel={(activity) =>
+                    router.patch(
+                        route('activities.cancel', activity.id),
+                        {},
+                        { preserveScroll: true },
+                    )
+                }
+            />
 
             <CrudFormDialog
                 open={activityMode !== null}
@@ -1309,5 +1558,740 @@ function MetricCard({
                 </div>
             </CardContent>
         </Card>
+    );
+}
+
+function GanttSchedule({
+    activities,
+    unscheduledActivities,
+    onSelectActivity,
+}: {
+    activities: Activity[];
+    unscheduledActivities: Activity[];
+    onSelectActivity: (activity: Activity) => void;
+}) {
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [ganttViewMode, setGanttViewMode] =
+        useState<GanttViewMode>('Week');
+    const tasks = useMemo(
+        () =>
+            activities
+                .map((activity): GanttTask | null => {
+                    const fallbackDate = parseDate(
+                        activity.fecha_inicio ?? activity.fecha_limite,
+                    );
+                    if (!fallbackDate) return null;
+
+                    const startDate =
+                        parseDate(activity.fecha_inicio) ?? fallbackDate;
+                    let endDate = parseDate(activity.fecha_limite) ?? startDate;
+
+                    if (endDate.getTime() <= startDate.getTime()) {
+                        endDate = addDays(startDate, 1);
+                    }
+
+                    return {
+                        id: activity.id,
+                        activityId: activity.id,
+                        name: activity.titulo,
+                        start: toDateString(startDate),
+                        end: toDateString(endDate),
+                        progress: activityProgress(activity),
+                        custom_class: `activity-priority-${activity.prioridad}`,
+                        description: activity.descripcion ?? '',
+                        status: activity.estado,
+                        priority: activity.prioridad,
+                        responsible:
+                            activity.responsable?.name ?? 'Sin responsable',
+                    };
+                })
+                .filter((task): task is GanttTask => task !== null),
+        [activities],
+    );
+
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container || tasks.length === 0) return;
+
+        container.replaceChildren();
+
+        const chart = new Gantt(container, tasks, {
+            view_mode: ganttViewMode,
+            view_mode_select: false,
+            language: 'es',
+            readonly: true,
+            readonly_dates: true,
+            readonly_progress: true,
+            today_button: false,
+            popup_on: 'click',
+            scroll_to: 'start',
+            bar_height: 26,
+            padding: 18,
+            container_height: 'auto',
+            on_click: (task) => {
+                const activity = activities.find(
+                    (item) => item.id === task.activityId,
+                );
+                if (activity) onSelectActivity(activity);
+            },
+            popup: ({ task, set_title, set_subtitle, set_details }) => {
+                set_title(escapeHtml(task.name));
+                set_subtitle(
+                    `${escapeHtml(label(task.status ?? 'pendiente'))} · ${escapeHtml(task.priority ?? 'media')}`,
+                );
+                set_details(
+                    `${escapeHtml(task.responsible ?? 'Sin responsable')}<br>${formatDate(task.start)} - ${formatDate(task.end)}`,
+                );
+            },
+        });
+
+        chart.change_view_mode(ganttViewMode, true);
+
+        return () => {
+            container.replaceChildren();
+        };
+    }, [activities, ganttViewMode, onSelectActivity, tasks]);
+
+    return (
+        <div className="space-y-4">
+            {tasks.length === 0 ? (
+                <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+                    No hay actividades con fechas para graficar.
+                </div>
+            ) : (
+                <div className="rounded-lg border bg-card p-3">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h2 className="font-semibold">Gantt de actividades</h2>
+                            <p className="text-sm text-muted-foreground">
+                                {tasks.length} actividades con fecha de inicio o limite.
+                            </p>
+                        </div>
+                        <div className="inline-flex rounded-md border bg-muted/30 p-1">
+                            {ganttViewOptions.map((option) => (
+                                <Button
+                                    key={option.value}
+                                    type="button"
+                                    size="sm"
+                                    variant={
+                                        ganttViewMode === option.value
+                                            ? 'default'
+                                            : 'ghost'
+                                    }
+                                    onClick={() =>
+                                        setGanttViewMode(option.value)
+                                    }
+                                >
+                                    {option.label}
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <div ref={containerRef} className="min-w-[820px]" />
+                    </div>
+                </div>
+            )}
+
+            {unscheduledActivities.length > 0 && (
+                <section className="space-y-3 rounded-lg border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                        <h2 className="font-semibold">Sin fecha</h2>
+                        <Badge variant="secondary">
+                            {unscheduledActivities.length}
+                        </Badge>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                        {unscheduledActivities.map((activity) => (
+                            <button
+                                key={activity.id}
+                                type="button"
+                                className="rounded-md border p-3 text-left transition-colors hover:border-primary/60 hover:bg-muted/40"
+                                onClick={() => onSelectActivity(activity)}
+                            >
+                                <div className="font-medium">{activity.titulo}</div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    <Badge variant={statusVariant(activity.estado)}>
+                                        {label(activity.estado)}
+                                    </Badge>
+                                    <Badge variant={priorityVariant(activity.prioridad)}>
+                                        {activity.prioridad}
+                                    </Badge>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </section>
+            )}
+        </div>
+    );
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+type ActivityDetailDialogProps = {
+    activity: Activity | null;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    users: UserOption[];
+    estadoOptions: string[];
+    prioridadOptions: string[];
+    tipoOptions: string[];
+    canManage: boolean;
+    canRegisterTime: boolean;
+    canMoveKanban: boolean;
+    canCreateTicket: boolean;
+    canViewTickets: boolean;
+    onFiles: () => void;
+    onComplete: (activity: Activity) => void;
+    onCancel: (activity: Activity) => void;
+};
+
+function ActivityDetailDialog({
+    activity,
+    open,
+    onOpenChange,
+    users,
+    estadoOptions,
+    prioridadOptions,
+    tipoOptions,
+    canManage,
+    canRegisterTime,
+    canMoveKanban,
+    canCreateTicket,
+    canViewTickets,
+    onFiles,
+    onComplete,
+    onCancel,
+}: ActivityDetailDialogProps) {
+    const form = useForm<ActivityForm>({
+        proyecto_id: '',
+        titulo: '',
+        descripcion: '',
+        tipo: tipoOptions[0] ?? 'tarea',
+        estado: 'pendiente',
+        prioridad: 'media',
+        responsable_id: '',
+        fecha_inicio: '',
+        fecha_limite: '',
+        minutos_estimados: '',
+    });
+
+    useEffect(() => {
+        if (!activity) return;
+
+        form.setData({
+            proyecto_id: activity.proyecto.id,
+            titulo: activity.titulo,
+            descripcion: activity.descripcion ?? '',
+            tipo: activity.tipo,
+            estado: activity.estado,
+            prioridad: activity.prioridad,
+            responsable_id: activity.responsable_id
+                ? String(activity.responsable_id)
+                : '',
+            fecha_inicio: activity.fecha_inicio?.slice(0, 10) ?? '',
+            fecha_limite: activity.fecha_limite?.slice(0, 10) ?? '',
+            minutos_estimados: activity.minutos_estimados
+                ? String(activity.minutos_estimados)
+                : '',
+        });
+        form.clearErrors();
+    }, [activity?.id]);
+
+    if (!activity) return null;
+
+    const projectId = activity.proyecto.id;
+    const relatedTickets = [
+        activity.ticket ? { id: 'main', tipo_relacion: 'principal', ticket: activity.ticket } : null,
+        ...(activity.ticket_links ?? []),
+    ].filter((item): item is ActivityTicketLink => Boolean(item?.ticket));
+
+    const submit = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        form.patch(route('activities.update', activity.id), {
+            preserveScroll: true,
+        });
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-6xl">
+                <DialogHeader>
+                    <DialogDescription>
+                        {activity.proyecto.nombre} / ACT-{activity.id.slice(0, 8)}
+                    </DialogDescription>
+                    <DialogTitle className="text-xl leading-tight">
+                        {activity.titulo}
+                    </DialogTitle>
+                </DialogHeader>
+
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+                    <section className="space-y-5">
+                        <form className="space-y-5" onSubmit={submit}>
+                            <FormInputField
+                                id="detail-title"
+                                label="Titulo"
+                                value={form.data.titulo}
+                                error={form.errors.titulo}
+                                disabled={!canManage}
+                                onChange={(event) =>
+                                    form.setData('titulo', event.target.value)
+                                }
+                            />
+
+                            <FormTextareaField
+                                id="detail-description"
+                                label="Descripcion"
+                                value={form.data.descripcion}
+                                error={form.errors.descripcion}
+                                disabled={!canManage}
+                                onChange={(event) =>
+                                    form.setData(
+                                        'descripcion',
+                                        event.target.value,
+                                    )
+                                }
+                            />
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <Field>
+                                    <Label>Estado</Label>
+                                    <Select
+                                        value={form.data.estado}
+                                        onValueChange={(value) =>
+                                            form.setData('estado', value)
+                                        }
+                                        disabled={!canManage}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {estadoOptions.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                    {label(option)}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {form.errors.estado && (
+                                        <FieldError>{form.errors.estado}</FieldError>
+                                    )}
+                                </Field>
+                                <Field>
+                                    <Label>Prioridad</Label>
+                                    <Select
+                                        value={form.data.prioridad}
+                                        onValueChange={(value) =>
+                                            form.setData('prioridad', value)
+                                        }
+                                        disabled={!canManage}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {prioridadOptions.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                    {option}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {form.errors.prioridad && (
+                                        <FieldError>{form.errors.prioridad}</FieldError>
+                                    )}
+                                </Field>
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-3">
+                                <FormInputField
+                                    id="detail-start"
+                                    label="Fecha inicio"
+                                    type="date"
+                                    value={form.data.fecha_inicio}
+                                    error={form.errors.fecha_inicio}
+                                    disabled={!canManage}
+                                    onChange={(event) =>
+                                        form.setData(
+                                            'fecha_inicio',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                                <FormInputField
+                                    id="detail-due"
+                                    label="Fecha limite"
+                                    type="date"
+                                    value={form.data.fecha_limite}
+                                    error={form.errors.fecha_limite}
+                                    disabled={!canManage}
+                                    onChange={(event) =>
+                                        form.setData(
+                                            'fecha_limite',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                                <FormInputField
+                                    id="detail-estimated"
+                                    label="Minutos estimados"
+                                    type="number"
+                                    min="0"
+                                    value={form.data.minutos_estimados}
+                                    error={form.errors.minutos_estimados}
+                                    disabled={!canManage}
+                                    onChange={(event) =>
+                                        form.setData(
+                                            'minutos_estimados',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </div>
+
+                            {canManage && (
+                                <Button type="submit" disabled={form.processing}>
+                                    Guardar cambios
+                                </Button>
+                            )}
+                        </form>
+
+                        <DialogSection
+                            title="Subtareas"
+                            empty={(activity.children ?? []).length === 0}
+                            emptyMessage="Sin subtareas registradas."
+                        >
+                            {activity.children?.map((child) => (
+                                <RelatedActivityRow key={child.id} activity={child} />
+                            ))}
+                        </DialogSection>
+
+                        <DialogSection
+                            title="Actividades vinculadas / tickets vinculados"
+                            empty={relatedTickets.length === 0}
+                            emptyMessage="Sin tickets relacionados."
+                        >
+                            {relatedTickets.map((link) =>
+                                link.ticket ? (
+                                    <div
+                                        key={link.id}
+                                        className="flex items-start justify-between gap-3 rounded-md border p-3"
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="font-medium">
+                                                {link.ticket.folio ?? 'Ticket'}
+                                            </div>
+                                            <div className="text-sm text-muted-foreground">
+                                                {link.ticket.titulo}
+                                            </div>
+                                        </div>
+                                        {canViewTickets ? (
+                                            <Button asChild size="sm" variant="outline">
+                                                <Link href={route('tickets.show', link.ticket.id)}>
+                                                    Abrir
+                                                </Link>
+                                            </Button>
+                                        ) : (
+                                            <Badge variant="outline">
+                                                {label(link.tipo_relacion)}
+                                            </Badge>
+                                        )}
+                                    </div>
+                                ) : null,
+                            )}
+                        </DialogSection>
+
+                        <DialogSection
+                            title="Actividad / Comentarios"
+                            empty={(activity.tiempos ?? []).length === 0}
+                            emptyMessage="Sin comentarios registrados."
+                            action={
+                                canRegisterTime ? (
+                                    <Button asChild size="sm" variant="outline">
+                                        <Link
+                                            href={route(
+                                                'proyectos.activities.times.create',
+                                                [projectId, activity.id],
+                                            )}
+                                        >
+                                            <MessageSquare className="size-4" />
+                                            Agregar comentario
+                                        </Link>
+                                    </Button>
+                                ) : null
+                            }
+                        >
+                            {activity.tiempos?.map((time) => (
+                                <div key={time.id} className="flex gap-3 rounded-md border p-3">
+                                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                                        {initials(time.usuario?.name)}
+                                    </div>
+                                    <div className="min-w-0 flex-1 space-y-1">
+                                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                                            <span className="font-medium">
+                                                {time.usuario?.name ?? 'Sistema'}
+                                            </span>
+                                            <Badge variant="outline">
+                                                {formatMinutes(time.minutos)}
+                                            </Badge>
+                                            <span className="text-xs text-muted-foreground">
+                                                {formatDate(time.created_at ?? time.fecha)}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm whitespace-pre-line text-muted-foreground">
+                                            {time.descripcion}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </DialogSection>
+                    </section>
+
+                    <aside className="space-y-4">
+                        <div className="rounded-lg border p-4">
+                            <div className="mb-3 flex flex-wrap gap-2">
+                                <Badge variant={statusVariant(activity.estado)}>
+                                    {label(activity.estado)}
+                                </Badge>
+                                <Badge variant={priorityVariant(activity.prioridad)}>
+                                    {activity.prioridad}
+                                </Badge>
+                                {isOverdue(activity) && (
+                                    <Badge variant="destructive">Vencida</Badge>
+                                )}
+                            </div>
+                            <div className="space-y-3 text-sm">
+                                <DetailRow label="Responsable">
+                                    <Select
+                                        value={form.data.responsable_id || 'sin_responsable'}
+                                        onValueChange={(value) =>
+                                            form.setData(
+                                                'responsable_id',
+                                                value === 'sin_responsable' ? '' : value,
+                                            )
+                                        }
+                                        disabled={!canManage}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="sin_responsable">
+                                                Sin responsable
+                                            </SelectItem>
+                                            {users.map((user) => (
+                                                <SelectItem key={user.id} value={String(user.id)}>
+                                                    {user.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </DetailRow>
+                                <DetailRow label="Tipo">
+                                    <Select
+                                        value={form.data.tipo}
+                                        onValueChange={(value) =>
+                                            form.setData('tipo', value)
+                                        }
+                                        disabled={!canManage}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {tipoOptions.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                    {label(option)}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </DetailRow>
+                                <DetailRow label="Actividad padre">
+                                    {activity.parent?.titulo ?? '-'}
+                                </DetailRow>
+                                <DetailRow label="Fecha inicio">
+                                    {formatDate(activity.fecha_inicio)}
+                                </DetailRow>
+                                <DetailRow label="Fecha limite">
+                                    {formatDate(activity.fecha_limite)}
+                                </DetailRow>
+                                <DetailRow label="Informador">
+                                    {activity.reportado_por?.name ?? activity.created_by?.name ?? '-'}
+                                </DetailRow>
+                                <DetailRow label="Tiempo estimado">
+                                    {formatMinutes(activity.minutos_estimados)}
+                                </DetailRow>
+                                <DetailRow label="Tiempo real">
+                                    {formatMinutes(activity.minutos_reales)}
+                                </DetailRow>
+                                <DetailRow label="Etiquetas">
+                                    {activity.tags?.length ? activity.tags.join(', ') : '-'}
+                                </DetailRow>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2 rounded-lg border p-4">
+                            {canMoveKanban && (
+                                <Button asChild variant="outline" className="w-full justify-start">
+                                    <Link
+                                        href={route('proyectos.activities.kanban.edit', [
+                                            projectId,
+                                            activity.id,
+                                        ])}
+                                    >
+                                        <KanbanSquare className="size-4" />
+                                        Mover en kanban
+                                    </Link>
+                                </Button>
+                            )}
+                            {canRegisterTime && (
+                                <Button asChild variant="outline" className="w-full justify-start">
+                                    <Link
+                                        href={route('proyectos.activities.times.create', [
+                                            projectId,
+                                            activity.id,
+                                        ])}
+                                    >
+                                        <Clock className="size-4" />
+                                        Registrar tiempo
+                                    </Link>
+                                </Button>
+                            )}
+                            {canManage && (
+                                <Button asChild variant="outline" className="w-full justify-start">
+                                    <Link
+                                        href={route('proyectos.activities.tickets.create', [
+                                            projectId,
+                                            activity.id,
+                                        ])}
+                                    >
+                                        <Ticket className="size-4" />
+                                        Relacionar ticket
+                                    </Link>
+                                </Button>
+                            )}
+                            {canCreateTicket && (
+                                <Button asChild variant="outline" className="w-full justify-start">
+                                    <Link
+                                        href={route(
+                                            'proyectos.activities.create-ticket.create',
+                                            [projectId, activity.id],
+                                        )}
+                                    >
+                                        <Plus className="size-4" />
+                                        Crear ticket
+                                    </Link>
+                                </Button>
+                            )}
+                            {canManage && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full justify-start"
+                                    onClick={onFiles}
+                                >
+                                    <Paperclip className="size-4" />
+                                    Archivos
+                                </Button>
+                            )}
+                            {canManage && activity.estado !== 'terminada' && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full justify-start"
+                                    onClick={() => onComplete(activity)}
+                                >
+                                    <CheckCircle2 className="size-4" />
+                                    Marcar terminada
+                                </Button>
+                            )}
+                            {canManage && activity.estado !== 'cancelada' && activity.estado !== 'terminada' && (
+                                <Button
+                                    type="button"
+                                    variant="destructive"
+                                    className="w-full justify-start"
+                                    onClick={() => onCancel(activity)}
+                                >
+                                    <XCircle className="size-4" />
+                                    Cancelar actividad
+                                </Button>
+                            )}
+                        </div>
+                    </aside>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function DialogSection({
+    title,
+    empty,
+    emptyMessage,
+    action,
+    children,
+}: {
+    title: string;
+    empty: boolean;
+    emptyMessage: string;
+    action?: React.ReactNode;
+    children: React.ReactNode;
+}) {
+    return (
+        <section className="space-y-3 rounded-lg border p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="font-semibold">{title}</h3>
+                {action}
+            </div>
+            {empty ? (
+                <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+            ) : (
+                <div className="space-y-3">{children}</div>
+            )}
+        </section>
+    );
+}
+
+function DetailRow({
+    label,
+    children,
+}: {
+    label: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <div className="grid gap-2">
+            <span className="text-xs text-muted-foreground">{label}</span>
+            <div className="min-w-0 font-medium">{children}</div>
+        </div>
+    );
+}
+
+function RelatedActivityRow({ activity }: { activity: RelatedActivity }) {
+    return (
+        <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+            <div className="min-w-0">
+                <div className="truncate text-sm font-medium">
+                    {activity.titulo}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                    {label(activity.kanban_column ?? activity.estado)}
+                </div>
+            </div>
+            <Badge variant={statusVariant(activity.estado)}>
+                {label(activity.estado)}
+            </Badge>
+        </div>
     );
 }

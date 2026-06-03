@@ -65,8 +65,6 @@ const mainNavItems: NavItem[] = [
         permissions: [
             'project-planning.activities.view',
             'project-planning.activities.manage',
-            'project-planning.kanban.view',
-            'project-planning.kanban.manage',
         ],
         children: [
             {
@@ -86,15 +84,6 @@ const mainNavItems: NavItem[] = [
                     'project-planning.activities.manage',
                 ],
                 activePatterns: ['^/actividades$'],
-            },
-            {
-                title: 'Kanban',
-                href: route('activities.kanban'),
-                permissions: [
-                    'project-planning.kanban.view',
-                    'project-planning.kanban.manage',
-                ],
-                activePatterns: ['^/actividades/kanban$'],
             },
             {
                 title: 'Terminadas',

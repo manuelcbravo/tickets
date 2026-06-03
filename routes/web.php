@@ -62,6 +62,7 @@ use App\Http\Controllers\Tickets\TicketStatusController;
 use App\Http\Controllers\Tickets\TicketSlaController;
 use App\Http\Controllers\Tickets\TicketTimeController;
 use App\Http\Controllers\Tickets\TicketTriageController;
+use App\Models\Proyecto;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -294,7 +295,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('dashboard', [ProjectActivityController::class, 'dashboard'])
                 ->middleware('permission:project-planning.activities.view|project-planning.activities.manage')
                 ->name('dashboard');
-            Route::get('kanban', [ProjectActivityController::class, 'kanban'])
+            Route::get('kanban', fn () => redirect()->route('activities.index', ['view' => 'kanban']))
                 ->middleware('permission:project-planning.kanban.view|project-planning.kanban.manage')
                 ->name('kanban');
             Route::redirect('finalizadas', '/actividades/terminadas')->name('completed.redirect');
@@ -420,7 +421,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('activities', [ProyectoSectionController::class, 'activities'])
             ->middleware('permission:project-planning.activities.view|project-planning.activities.manage')
             ->name('activities.index');
-        Route::get('activities/kanban', [ProyectoSectionController::class, 'kanban'])
+        Route::get('activities/kanban', fn (Proyecto $proyecto) => redirect()->route('proyectos.activities.index', [
+            'proyecto' => $proyecto,
+            'view' => 'kanban',
+        ]))
             ->middleware('permission:project-planning.kanban.view|project-planning.kanban.manage')
             ->name('activities.kanban.index');
         Route::get('activities/{activity}', [ProyectoSectionController::class, 'activityShow'])
